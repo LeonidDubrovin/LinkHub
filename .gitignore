@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+dist-electron/
+dist-server/
+release/
+coverage/
+.DS_Store
+*.log
+*.db
+*.sqlite
+*.sqlite3
+.env*
+!.env.example
+server-loaded.txt
