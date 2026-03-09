@@ -4,6 +4,7 @@ import { DynamicCover } from "./components/DynamicCover";
 import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddBookmarkModal } from "./components/AddBookmarkModal";
+import { SettingsModal } from "./components/SettingsModal";
 import { Bookmark, Category, Tag, Domain } from "./types";
 import { format } from "date-fns";
 import {
@@ -43,6 +44,7 @@ export default function App() {
   const [inspectorTab, setInspectorTab] = useState<'details' | 'reader' | 'web'>('details');
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingLoading, setIsAddingLoading] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [searchQuery, setSearchQuery] = useState("");
@@ -359,7 +361,7 @@ export default function App() {
       
       const a = document.createElement("a");
       a.href = url;
-      a.download = `linkhub-backup-${format(new Date(), "yyyy-MM-dd-HH-mm")}.json`;
+      a.download = `bookmarks-backup-${format(new Date(), "yyyy-MM-dd-HH-mm")}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -490,25 +492,13 @@ export default function App() {
             </div>
             Bookmarks
           </div>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={handleBackup}
-              className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500"
-              title="Backup Data"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-            </button>
-            <label 
-              className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500 cursor-pointer"
-              title="Restore Data"
-            >
-              <input type="file" accept=".json" className="hidden" onChange={handleRestore} />
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-upload"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-            </label>
-            <button className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500">
-              <Settings size={18} />
-            </button>
-          </div>
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500"
+            title="Settings"
+          >
+            <Settings size={18} />
+          </button>
         </div>
 
         <div className="px-3 pb-2">
@@ -1125,6 +1115,14 @@ export default function App() {
         isLoading={isAddingLoading}
         onClose={() => setIsAdding(false)}
         onSubmit={handleAddBookmark}
+      />
+
+      {/* SETTINGS MODAL */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onBackup={handleBackup}
+        onRestore={handleRestore}
       />
 
       {/* TOAST NOTIFICATION */}

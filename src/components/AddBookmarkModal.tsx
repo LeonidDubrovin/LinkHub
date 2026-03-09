@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
 interface AddBookmarkModalProps {
@@ -10,6 +10,23 @@ interface AddBookmarkModalProps {
 
 export function AddBookmarkModal({ isOpen, isLoading, onClose, onSubmit }: AddBookmarkModalProps) {
   const [newUrls, setNewUrls] = useState("");
+
+  useEffect(() => {
+    if (isOpen) {
+      setNewUrls("");
+      navigator.clipboard.readText().then(text => {
+        if (text) {
+          const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+          const hasUrls = lines.some(l => l.startsWith('http://') || l.startsWith('https://'));
+          if (hasUrls) {
+            setNewUrls(text);
+          }
+        }
+      }).catch(err => {
+        console.error("Failed to read clipboard", err);
+      });
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -322,7 +322,10 @@ router.get("/backup", (req, res) => {
       },
     };
 
-    res.json(backup);
+    res.setHeader("Content-Type", "application/json");
+    res.send(JSON.stringify(backup, (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    ));
   } catch (error: any) {
     console.error("Backup failed:", error);
     res.status(500).json({ error: error.message });
