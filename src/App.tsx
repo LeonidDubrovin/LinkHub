@@ -348,6 +348,80 @@ export default function App() {
     });
   };
 
+  const handleBackup = async () => {
+    try {
+      const res = await fetch("/api/backup");
+      if (!res.ok) throw new Error("Failed to generate backup");
+      
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `linkhub-backup-${format(new Date(), "yyyy-MM-dd-HH-mm")}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setToast({ message: "Backup downloaded successfully", type: "success" });
+    } catch (error) {
+      console.error("Backup error:", error);
+      setToast({ message: "Failed to generate backup", type: "error" });
+    }
+  };
+
+  const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setConfirmDialog({
+      isOpen: true,
+      title: "Restore Backup",
+      message: "Are you sure you want to restore this backup? This will OVERWRITE all your current bookmarks and categories. This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          const text = await file.text();
+          const backupData = JSON.parse(text);
+
+          if (!backupData.version || !backupData.data) {
+            throw new Error("Invalid backup file format");
+          }
+
+          const res = await fetch("/api/restore", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(backupData),
+          });
+
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "Failed to restore backup");
+          }
+
+          setToast({ message: "Backup restored successfully", type: "success" });
+          
+          // Refresh all data
+          setSelectedBookmark(null);
+          setSelectedCategoryId(null);
+          setSelectedTagId(null);
+          setSelectedDomain(null);
+          fetchBookmarks();
+          fetchCategories();
+          fetchTags();
+          fetchDomains();
+        } catch (error: any) {
+          console.error("Restore error:", error);
+          setToast({ message: error.message || "Failed to restore backup", type: "error" });
+        } finally {
+          // Reset file input
+          e.target.value = "";
+        }
+      }
+    });
+  };
+
   const toggleSelectAll = () => {
     if (selectedBookmarkIds.size === filteredBookmarks.length && filteredBookmarks.length > 0) {
       setSelectedBookmarkIds(new Set());
@@ -416,9 +490,25 @@ export default function App() {
             </div>
             Bookmarks
           </div>
-          <button className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500">
-            <Settings size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={handleBackup}
+              className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500"
+              title="Backup Data"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+            </button>
+            <label 
+              className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500 cursor-pointer"
+              title="Restore Data"
+            >
+              <input type="file" accept=".json" className="hidden" onChange={handleRestore} />
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-upload"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+            </label>
+            <button className="p-1.5 hover:bg-slate-200 rounded-md text-slate-500">
+              <Settings size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="px-3 pb-2">
