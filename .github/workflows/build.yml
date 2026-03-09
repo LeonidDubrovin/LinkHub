@@ -27,8 +27,8 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload Artifacts
+    - name: Upload Portable Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: LinkHub-Windows-Exe
-        path: release/*.exe
+        name: LinkHub-Windows-Portable
+        path: release/*.exe 
