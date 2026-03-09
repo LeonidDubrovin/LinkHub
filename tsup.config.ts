@@ -6,4 +6,5 @@ export default defineConfig({
   target: "node18",
   outDir: "dist-electron",
   clean: true,
+  external: ["electron"],
 });
