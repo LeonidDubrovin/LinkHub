@@ -6,9 +6,10 @@ import { v4 as uuidv4 } from "uuid";
 import * as tldts from "tldts";
 
 const appName = "LinkHub";
-let dataDir = process.cwd();
+let dataDir = process.env.DATA_DIR || process.cwd();
 
-if (process.env.NODE_ENV === "production") {
+// Fallback for production if DATA_DIR is not set
+if (!process.env.DATA_DIR && process.env.NODE_ENV === "production") {
   if (process.platform === "win32") {
     dataDir = path.join(
       process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
