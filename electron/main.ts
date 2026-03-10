@@ -16,9 +16,9 @@ async function createWindow() {
   const { startServer } = await import("../server.js");
 
   // Determine icon path (dist in prod, public in dev)
-  let iconPath = path.join(__dirname, "../dist/icon.png");
+  let iconPath = path.join(__dirname, "../dist/icon-clean.png");
   if (!fs.existsSync(iconPath)) {
-    iconPath = path.join(__dirname, "../public/icon.png");
+    iconPath = path.join(__dirname, "../public/icon-clean.png");
   }
 
   mainWindow = new BrowserWindow({

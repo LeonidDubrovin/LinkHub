@@ -28,12 +28,14 @@
       "package.json"
     ],
     "win": {
-      "target": ["portable"],
-      "icon": "public/icon.png"
+      "target": [
+        "portable"
+      ],
+      "icon": "public/icon.ico"
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/icon.png"
+      "icon": "public/icon-clean.png"
     },
     "linux": {
       "target": "AppImage"
@@ -72,6 +74,7 @@
     "cross-env": "^10.1.0",
     "electron": "^40.8.0",
     "electron-builder": "^26.8.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.14",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
