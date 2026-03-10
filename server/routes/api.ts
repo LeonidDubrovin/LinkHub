@@ -96,50 +96,21 @@ async function createBookmark(url: string) {
     return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
   }
 
-  const data = await fetchBookmarkData(url);
-
-  // 5. Save to DB
+  // Insert immediately with basic info
   const bookmarkId = uuidv4();
+  let domain = "";
+  try {
+    domain = new URL(url).hostname;
+  } catch (e) {}
+
   const insertBookmark = db.prepare(`
-    INSERT INTO bookmarks (id, url, title, description, cover_image_url, content_text, category_id, domain, images_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO bookmarks (id, url, title, domain)
+    VALUES (?, ?, ?, ?)
   `);
 
-  insertBookmark.run(
-    bookmarkId,
-    url,
-    data.title,
-    data.description,
-    data.cover_image_url,
-    data.content_text,
-    data.category_id,
-    data.domain,
-    data.images_json
-  );
+  insertBookmark.run(bookmarkId, url, url, domain);
 
-  // Save Tags
-  for (const tagName of data.suggestedTags) {
-    let tag = db
-      .prepare("SELECT id FROM tags WHERE name = ?")
-      .get(tagName) as any;
-    let tagId;
-
-    if (!tag) {
-      tagId = uuidv4();
-      db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)").run(
-        tagId,
-        tagName
-      );
-    } else {
-      tagId = tag.id;
-    }
-
-    db.prepare(
-      "INSERT INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)"
-    ).run(bookmarkId, tagId);
-  }
-
-  return { id: bookmarkId, title: data.title, success: true };
+  return { id: bookmarkId, title: url, success: true, needsRefresh: true };
 }
 
 router.post("/bookmarks", async (req, res) => {

@@ -132,10 +132,13 @@ export default function App() {
           } else {
             setToast({ message: 'Bookmark added successfully', type: 'success' });
             setIsAdding(false);
-            fetchBookmarks();
+            await fetchBookmarks();
             fetchCategories();
             fetchTags();
             fetchDomains();
+            if (data.needsRefresh) {
+              handleRefreshBookmark(data.id);
+            }
           }
         } else {
           setToast({ message: data.error || 'Failed to add bookmark', type: 'error' });
@@ -160,10 +163,17 @@ export default function App() {
           
           setIsAdding(false);
           if (addedUrls.length > 0) {
-            fetchBookmarks();
+            await fetchBookmarks();
             fetchCategories();
             fetchTags();
             fetchDomains();
+            
+            // Trigger refresh for all newly added bookmarks
+            addedUrls.forEach((r: any) => {
+              if (r.needsRefresh) {
+                handleRefreshBookmark(r.id);
+              }
+            });
           }
         } else {
           setToast({ message: data.error || 'Failed to add bookmarks', type: 'error' });
@@ -353,24 +363,36 @@ export default function App() {
   const handleBackup = async () => {
     try {
       const res = await fetch("/api/backup");
-      if (!res.ok) throw new Error("Failed to generate backup");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to fetch backup data from server");
+      }
       
       const data = await res.json();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
+      const jsonString = JSON.stringify(data, null, 2);
       
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `bookmarks-backup-${format(new Date(), "yyyy-MM-dd-HH-mm")}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
-      setToast({ message: "Backup downloaded successfully", type: "success" });
-    } catch (error) {
+      try {
+        const blob = new Blob([jsonString], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `bookmarks-backup-${format(new Date(), "yyyy-MM-dd-HH-mm")}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        setToast({ message: "Backup downloaded successfully", type: "success" });
+      } catch (downloadError) {
+        // If download fails (e.g. due to iframe sandbox), fallback to clipboard
+        console.warn("Download failed, falling back to clipboard:", downloadError);
+        await navigator.clipboard.writeText(jsonString);
+        setToast({ message: "Backup copied to clipboard (download blocked by browser)", type: "success" });
+      }
+    } catch (error: any) {
       console.error("Backup error:", error);
-      setToast({ message: "Failed to generate backup", type: "error" });
+      setToast({ message: error.message || "Failed to generate backup", type: "error" });
     }
   };
 
