@@ -1,5 +1,5 @@
-import React from "react";
-import { X, Download, Upload } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { X, Download, Upload, Folder } from "lucide-react";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -14,6 +14,41 @@ export function SettingsModal({
   onBackup,
   onRestore,
 }: SettingsModalProps) {
+  const [dataDir, setDataDir] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetch("/api/settings")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.dataDir) setDataDir(data.dataDir);
+        })
+        .catch(console.error);
+    }
+  }, [isOpen]);
+
+  const handleSaveDataDir = async () => {
+    try {
+      setIsSaving(true);
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataDir }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+      } else {
+        alert(data.error || "Failed to save settings");
+      }
+    } catch (e) {
+      alert("Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -29,7 +64,36 @@ export function SettingsModal({
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-8 max-h-[80vh] overflow-y-auto">
+          <div>
+            <h3 className="text-sm font-medium text-slate-900 mb-3">Data Directory</h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Choose where your database and application files are stored.
+            </p>
+            
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                <Folder size={18} className="text-slate-400" />
+                <input
+                  type="text"
+                  value={dataDir}
+                  onChange={(e) => setDataDir(e.target.value)}
+                  className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder:text-slate-400"
+                  placeholder="e.g. C:\LinkHub\Data"
+                />
+              </div>
+              <button
+                onClick={handleSaveDataDir}
+                disabled={isSaving || !dataDir}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+              >
+                {isSaving ? "Saving..." : "Save Directory"}
+              </button>
+            </div>
+          </div>
+
+          <div className="h-px bg-slate-100 w-full"></div>
+
           <div>
             <h3 className="text-sm font-medium text-slate-900 mb-3">Backup & Restore</h3>
             <p className="text-sm text-slate-500 mb-4">

@@ -31,11 +31,11 @@
       "target": [
         "portable"
       ],
-      "icon": "public/icon.ico"
+      "icon": "public/icon.png"
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/icon-clean.png"
+      "icon": "public/icon.png"
     },
     "linux": {
       "target": "AppImage"

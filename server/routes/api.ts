@@ -2,12 +2,55 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
-import db from "../db.js";
+import db, { getDataDir } from "../db.js";
 import { fetchBookmarkData } from "../services/scraper.js";
+import { getConfig, saveConfig } from "../config.js";
+import fs from "fs";
+import path from "path";
 
 import { categorizeWithAI } from "../services/ai.js";
 
 const router = express.Router();
+
+router.get("/settings", (req, res) => {
+  res.json({
+    dataDir: getDataDir()
+  });
+});
+
+router.post("/settings", express.json(), (req, res) => {
+  try {
+    let { dataDir } = req.body;
+    if (!dataDir) return res.status(400).json({ error: "dataDir is required" });
+
+    // Resolve to absolute path
+    dataDir = path.resolve(dataDir);
+
+    // Ensure the new directory exists
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    // Save to config
+    const config = getConfig();
+    config.dataDir = dataDir;
+    saveConfig(config);
+
+    // Note: To fully apply this, the app needs to be restarted.
+    // We can copy the current database to the new location if it doesn't exist there.
+    const currentDbPath = path.join(getDataDir(), "bookmarks.db");
+    const newDbPath = path.join(dataDir, "bookmarks.db");
+
+    if (fs.existsSync(currentDbPath) && !fs.existsSync(newDbPath)) {
+      fs.copyFileSync(currentDbPath, newDbPath);
+    }
+
+    res.json({ success: true, message: "Settings saved. Please restart the application to fully apply changes." });
+  } catch (error: any) {
+    console.error("Failed to save settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 router.get("/categories", (req, res) => {
   const categories = db.prepare("SELECT * FROM categories ORDER BY name").all();

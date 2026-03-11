@@ -10,15 +10,44 @@ let mainWindow: BrowserWindow | null = null;
 let serverStarted = false;
 
 async function createWindow() {
-  // Set DATA_DIR before starting the server so the DB is stored in the user data folder
-  process.env.DATA_DIR = app.getPath("userData");
+  // Set DATA_DIR before starting the server so the DB is stored in the correct location
+  if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR) {
+    process.env.PORTABLE_EXECUTABLE_DIR = path.dirname(app.getPath("exe"));
+  }
+  
+  const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
+  const configPath = path.join(exeDir, "linkhub.config.json");
+  let customDataDir = null;
+  
+  if (fs.existsSync(configPath)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      if (config.dataDir) {
+        customDataDir = config.dataDir;
+      }
+    } catch (e) {
+      console.error("Failed to read config:", e);
+    }
+  }
+
+  if (!process.env.DATA_DIR) {
+    if (customDataDir) {
+      process.env.DATA_DIR = customDataDir;
+    } else if (app.isPackaged) {
+      // In production, store data next to the executable (portable mode)
+      process.env.DATA_DIR = path.join(exeDir, "data");
+    } else {
+      // In development, store in the project root
+      process.env.DATA_DIR = path.join(process.cwd(), "data");
+    }
+  }
 
   const { startServer } = await import("../server.js");
 
   // Determine icon path (dist in prod, public in dev)
-  let iconPath = path.join(__dirname, "../dist/icon-clean.png");
+  let iconPath = path.join(__dirname, "../dist/icon.png");
   if (!fs.existsSync(iconPath)) {
-    iconPath = path.join(__dirname, "../public/icon-clean.png");
+    iconPath = path.join(__dirname, "../public/icon.png");
   }
 
   mainWindow = new BrowserWindow({

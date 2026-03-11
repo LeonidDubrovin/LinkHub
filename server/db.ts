@@ -4,21 +4,17 @@ import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import * as tldts from "tldts";
+import { getConfig } from "./config.js";
 
 const appName = "LinkHub";
-let dataDir = process.env.DATA_DIR || process.cwd();
 
-// Fallback for production if DATA_DIR is not set
-if (!process.env.DATA_DIR && process.env.NODE_ENV === "production") {
-  if (process.platform === "win32") {
-    dataDir = path.join(
-      process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
-      appName
-    );
-  } else if (process.platform === "darwin") {
-    dataDir = path.join(os.homedir(), "Library", "Application Support", appName);
+let dataDir = process.env.DATA_DIR;
+if (!dataDir) {
+  const config = getConfig();
+  if (config.dataDir) {
+    dataDir = config.dataDir;
   } else {
-    dataDir = path.join(os.homedir(), ".config", appName);
+    dataDir = path.join(process.cwd(), "data");
   }
 }
 
@@ -114,4 +110,5 @@ if (catCount.count === 0) {
   insertCat.run(uuidv4(), "Design", "Palette", "#ec4899");
 }
 
+export const getDataDir = () => dataDir;
 export default db;
