@@ -16,7 +16,9 @@ export function getConfig() {
       console.error("Failed to read config:", e);
     }
   }
-  return {};
+  return {
+    userAgent: "Mozilla/5.0 (compatible; Twitterbot/1.0)"
+  };
 }
 
 export function saveConfig(config: any) {

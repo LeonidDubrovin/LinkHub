@@ -13,14 +13,16 @@ import { categorizeWithAI } from "../services/ai.js";
 const router = express.Router();
 
 router.get("/settings", (req, res) => {
+  const config = getConfig();
   res.json({
-    dataDir: getDataDir()
+    dataDir: getDataDir(),
+    userAgent: config.userAgent || "Mozilla/5.0 (compatible; Twitterbot/1.0)"
   });
 });
 
 router.post("/settings", express.json(), (req, res) => {
   try {
-    let { dataDir } = req.body;
+    let { dataDir, userAgent } = req.body;
     if (!dataDir) return res.status(400).json({ error: "dataDir is required" });
 
     // Resolve to absolute path
@@ -34,6 +36,9 @@ router.post("/settings", express.json(), (req, res) => {
     // Save to config
     const config = getConfig();
     config.dataDir = dataDir;
+    if (userAgent !== undefined) {
+      config.userAgent = userAgent;
+    }
     saveConfig(config);
 
     // Note: To fully apply this, the app needs to be restarted.
@@ -195,10 +200,11 @@ router.get("/bookmarks/:id/readability", async (req, res) => {
   if (!bookmark) return res.status(404).json({ error: "Not found" });
 
   try {
+    const config = getConfig();
+    const userAgent = config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
     const response = await fetch(bookmark.url, {
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": userAgent,
       },
     });
     const html = await response.text();
@@ -209,6 +215,49 @@ router.get("/bookmarks/:id/readability", async (req, res) => {
     res.json(article);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/proxy", async (req, res) => {
+  const url = req.query.url as string;
+  if (!url) return res.status(400).send("URL is required");
+
+  try {
+    const config = getConfig();
+    const userAgent = config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": userAgent,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+    });
+
+    const contentType = response.headers.get("content-type");
+    if (contentType && !contentType.includes("text/html")) {
+      // If it's not HTML, just redirect to the original URL or pipe it
+      return res.redirect(url);
+    }
+
+    let html = await response.text();
+    
+    // Inject <base> tag so relative assets load correctly
+    // Use response.url in case there was a redirect
+    const finalUrl = response.url || url;
+    const baseTag = `<base href="${finalUrl}">`;
+    
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/(<head[^>]*>)/i, `$1\n${baseTag}`);
+    } else {
+      html = baseTag + "\n" + html;
+    }
+
+    res.setHeader("Content-Type", "text/html");
+    // Explicitly do not set X-Frame-Options or CSP
+    res.send(html);
+  } catch (error: any) {
+    res.status(500).send(`Failed to load page: ${error.message}`);
   }
 });
 

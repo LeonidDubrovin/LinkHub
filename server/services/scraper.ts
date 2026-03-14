@@ -3,23 +3,27 @@ import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import * as tldts from "tldts";
 import { categorizeWithAI } from "./ai.js";
+import { getConfig } from "../config.js";
 
 export async function fetchBookmarkData(url: string) {
   // 1. Fetch HTML
   // Use a bot User-Agent (like Twitterbot or Googlebot). Many sites (like Kinopoisk) 
   // block generic fetches but explicitly allow social bots to generate link previews.
   let html = "";
+  const config = getConfig();
+  const userAgent = config.userAgent || "Mozilla/5.0 (compatible; Twitterbot/1.0)";
+  
   try {
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; Twitterbot/1.0)",
+        "User-Agent": userAgent,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
     });
     html = await response.text();
   } catch (e) {
-    console.error("Fetch failed with Twitterbot, trying generic...", e);
+    console.error(`Fetch failed with ${userAgent}, trying generic...`, e);
     try {
       const fallbackResponse = await fetch(url);
       html = await fallbackResponse.text();

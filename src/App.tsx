@@ -50,7 +50,7 @@ export default function App() {
   });
   const [isDragging, setIsDragging] = useState(false);
 
-  const [inspectorTab, setInspectorTab] = useState<'details' | 'reader' | 'web'>('details');
+  const [inspectorTab, setInspectorTab] = useState<'details' | 'reader' | 'web' | 'video'>('details');
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingLoading, setIsAddingLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -90,6 +90,11 @@ export default function App() {
   const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc">("date_desc");
   const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
 
+  const getYouTubeId = (url: string) => {
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/);
+    return match ? match[1] : null;
+  };
+
   useEffect(() => {
     localStorage.setItem('viewMode', viewMode);
   }, [viewMode]);
@@ -101,6 +106,16 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('pinnedDomains', JSON.stringify(pinnedDomains));
   }, [pinnedDomains]);
+
+  useEffect(() => {
+    if (selectedBookmark) {
+      if (getYouTubeId(selectedBookmark.url)) {
+        setInspectorTab('video');
+      } else {
+        setInspectorTab((prev) => prev === 'video' ? 'details' : prev);
+      }
+    }
+  }, [selectedBookmark?.id]);
 
   useEffect(() => {
     fetchCategories();
@@ -1097,6 +1112,14 @@ export default function App() {
               >
                 <Globe size={12} /> Web
               </button>
+              {getYouTubeId(selectedBookmark.url) && (
+                <button 
+                  onClick={() => setInspectorTab('video')}
+                  className={cn("px-3 py-1 text-xs font-medium rounded-sm transition-colors flex items-center gap-1", inspectorTab === 'video' ? "bg-white shadow-sm text-slate-800" : "text-slate-500 hover:text-slate-700")}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-play"><polygon points="6 3 20 12 6 21 6 3"/></svg> Video
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1">
               {selectedBookmark && (
@@ -1157,19 +1180,42 @@ export default function App() {
 
             {inspectorTab === 'web' && (
               <div className="w-full h-full flex flex-col">
-                <div className="bg-yellow-50 border-b border-yellow-100 p-3 text-xs text-yellow-800 flex flex-col gap-2">
-                  <p><strong>Note:</strong> Many websites block being embedded in other pages for security reasons (X-Frame-Options).</p>
-                  <p>If the preview below doesn't load, please open the link directly.</p>
-                  <a href={selectedBookmark.url} target="_blank" rel="noreferrer" className="font-medium hover:underline flex items-center gap-1 inline-flex w-fit bg-yellow-100 px-2 py-1 rounded-md">
-                    Open in new tab <ExternalLink size={10} />
-                  </a>
-                </div>
+                <details className="bg-blue-50 border-b border-blue-100 p-2 text-xs text-blue-800 group">
+                  <summary className="font-medium cursor-pointer list-none [&::-webkit-details-marker]:hidden flex items-center justify-between px-1">
+                    <span className="flex items-center gap-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                      Proxy Preview Active
+                    </span>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down group-open:rotate-180 transition-transform"><path d="m6 9 6 6 6-6"/></svg>
+                  </summary>
+                  <div className="mt-2 flex flex-col gap-2 pl-5 pb-1">
+                    <p>This preview is loaded via a proxy to bypass iframe restrictions. Some interactive elements or complex layouts might not work perfectly.</p>
+                    <a href={selectedBookmark.url} target="_blank" rel="noreferrer" className="font-medium hover:underline flex items-center gap-1 inline-flex w-fit bg-blue-100 px-2 py-1 rounded-md">
+                      Open original site <ExternalLink size={10} />
+                    </a>
+                  </div>
+                </details>
                 <iframe 
-                  src={selectedBookmark.url} 
-                  className="w-full flex-1 border-0 bg-slate-50" 
+                  src={`/api/proxy?url=${encodeURIComponent(selectedBookmark.url)}`} 
+                  className="w-full flex-1 border-0 bg-white" 
                   sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
                   title="Web Preview"
                 />
+              </div>
+            )}
+
+            {inspectorTab === 'video' && getYouTubeId(selectedBookmark.url) && (
+              <div className="w-full h-full bg-black flex items-center justify-center">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src={`https://www.youtube.com/embed/${getYouTubeId(selectedBookmark.url)}?autoplay=1`}
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                ></iframe>
               </div>
             )}
 
