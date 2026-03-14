@@ -17,6 +17,7 @@ import {
   ExternalLink,
   BookOpen,
   Globe,
+  Shield,
   X,
   RefreshCw,
   ArrowUpDown,
@@ -51,6 +52,8 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
 
   const [inspectorTab, setInspectorTab] = useState<'details' | 'reader' | 'web' | 'video'>('details');
+  const [webPreviewMode, setWebPreviewMode] = useState<'proxy' | 'direct'>('proxy');
+  const [webPreviewKey, setWebPreviewKey] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingLoading, setIsAddingLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1185,25 +1188,63 @@ export default function App() {
 
             {inspectorTab === 'web' && (
               <div className="w-full h-full flex flex-col">
-                <details className="bg-blue-50 border-b border-blue-100 p-2 text-xs text-blue-800 group">
-                  <summary className="font-medium cursor-pointer list-none [&::-webkit-details-marker]:hidden flex items-center justify-between px-1">
-                    <span className="flex items-center gap-1">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                      Proxy Preview Active
-                    </span>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down group-open:rotate-180 transition-transform"><path d="m6 9 6 6 6-6"/></svg>
-                  </summary>
-                  <div className="mt-2 flex flex-col gap-2 pl-5 pb-1">
-                    <p>This preview is loaded via a proxy to bypass iframe restrictions. Some interactive elements or complex layouts might not work perfectly.</p>
-                    <a href={selectedBookmark.url} target="_blank" rel="noreferrer" className="font-medium hover:underline flex items-center gap-1 inline-flex w-fit bg-blue-100 px-2 py-1 rounded-md">
-                      Open original site <ExternalLink size={10} />
-                    </a>
+                <div className="bg-slate-50 border-b border-slate-200 p-2 flex flex-col gap-2 text-xs text-slate-700">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setWebPreviewMode(m => m === 'proxy' ? 'direct' : 'proxy')}
+                        className={cn(
+                          "flex items-center gap-1.5 px-2 py-1.5 rounded-md font-medium transition-colors",
+                          webPreviewMode === 'proxy' 
+                            ? "bg-blue-100 text-blue-700 hover:bg-blue-200" 
+                            : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                        )}
+                        title={webPreviewMode === 'proxy' ? "Switch to Direct mode (bypasses Cloudflare but may fail on some sites)" : "Switch to Proxy mode (bypasses iframe restrictions)"}
+                      >
+                        {webPreviewMode === 'proxy' ? (
+                          <><Shield size={14} /> Proxy Mode</>
+                        ) : (
+                          <><Globe size={14} /> Direct Mode</>
+                        )}
+                      </button>
+                      <span className="text-slate-500 hidden sm:inline">
+                        {webPreviewMode === 'proxy' 
+                          ? "Bypasses iframe restrictions" 
+                          : "Bypasses Cloudflare checks"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setWebPreviewKey(k => k + 1)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 rounded-md transition-colors font-medium shadow-sm"
+                        title="Reload preview"
+                      >
+                        <RefreshCw size={14} /> Reload Page
+                      </button>
+                      <a 
+                        href={selectedBookmark.url} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors font-medium shadow-sm"
+                        title="Open in new tab"
+                      >
+                        <ExternalLink size={14} /> Open Site
+                      </a>
+                    </div>
                   </div>
-                </details>
+                  {webPreviewMode === 'direct' && (
+                    <div className="bg-amber-50 text-amber-800 px-3 py-2 rounded-md border border-amber-200 flex items-start gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-alert-triangle shrink-0 mt-0.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                      <p>If the page below is blank or refuses to connect, the website is blocking iframes (X-Frame-Options). Please use <b>Proxy Mode</b> or open the site in a new tab.</p>
+                    </div>
+                  )}
+                </div>
                 <iframe 
-                  src={`/api/proxy?url=${encodeURIComponent(selectedBookmark.url)}`} 
+                  key={`${selectedBookmark.id}-${webPreviewMode}-${webPreviewKey}`}
+                  src={webPreviewMode === 'proxy' 
+                    ? `/api/proxy?url=${encodeURIComponent(selectedBookmark.url)}` 
+                    : selectedBookmark.url} 
                   className="w-full flex-1 border-0 bg-white" 
-                  sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
                   title="Web Preview"
                 />
               </div>

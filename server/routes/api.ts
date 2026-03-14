@@ -224,16 +224,39 @@ router.get("/proxy", async (req, res) => {
 
   try {
     const config = getConfig();
-    const userAgent = config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    // Use Googlebot User-Agent to bypass Cloudflare/WAF challenges on many sites
+    const userAgent = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
     
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": userAgent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-    });
+    const headers: Record<string, string> = {
+      "User-Agent": userAgent,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.5",
+      "X-Forwarded-For": "66.249.66.1", // Googlebot IP range
+    };
+    
+    // Forward cookies from the client
+    if (req.headers.cookie) {
+      headers["Cookie"] = req.headers.cookie;
+    }
 
+    const response = await fetch(url, { headers });
+
+    // Forward Set-Cookie headers back to the client
+    if (typeof response.headers.getSetCookie === 'function') {
+      const cookies = response.headers.getSetCookie();
+      if (cookies && cookies.length > 0) {
+        res.setHeader("Set-Cookie", cookies);
+      }
+    } else {
+      const setCookie = response.headers.get("set-cookie");
+      if (setCookie) {
+        res.setHeader("Set-Cookie", setCookie);
+      }
+    }
+
+    const serverHeader = response.headers.get("server")?.toLowerCase() || "";
+    const isCloudflare = serverHeader.includes("cloudflare");
+    
     const contentType = response.headers.get("content-type");
     if (contentType && !contentType.includes("text/html")) {
       // If it's not HTML, just redirect to the original URL or pipe it
@@ -245,12 +268,16 @@ router.get("/proxy", async (req, res) => {
     // Inject <base> tag so relative assets load correctly
     // Use response.url in case there was a redirect
     const finalUrl = response.url || url;
-    const baseTag = `<base href="${finalUrl}">`;
     
-    if (/<head[^>]*>/i.test(html)) {
-      html = html.replace(/(<head[^>]*>)/i, `$1\n${baseTag}`);
-    } else {
-      html = baseTag + "\n" + html;
+    // If it's a Cloudflare challenge, we don't inject the base tag because it breaks the Turnstile iframe origin checks.
+    // Instead, the browser will request /cdn-cgi/ from our domain, and we will proxy it below.
+    if (!isCloudflare || (response.status !== 403 && response.status !== 503)) {
+      const baseTag = `<base href="${finalUrl}">`;
+      if (/<head[^>]*>/i.test(html)) {
+        html = html.replace(/(<head[^>]*>)/i, `$1\n${baseTag}`);
+      } else {
+        html = baseTag + "\n" + html;
+      }
     }
 
     res.setHeader("Content-Type", "text/html");
