@@ -28,6 +28,8 @@ import {
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
+import { getDomain, getYouTubeId } from './utils';
+
 export default function App() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -82,14 +84,6 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
 
-  const getDomain = (url: string) => {
-    try {
-      return new URL(url).hostname;
-    } catch (e) {
-      return "unknown";
-    }
-  };
-
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -100,12 +94,6 @@ export default function App() {
 
   const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc">("date_desc");
   const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
-
-  const getYouTubeId = (url: string) => {
-    if (!url) return null;
-    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/);
-    return match ? match[1] : null;
-  };
 
   useEffect(() => {
     localStorage.setItem('viewMode', viewMode);
