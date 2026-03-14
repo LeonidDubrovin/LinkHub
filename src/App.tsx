@@ -82,6 +82,14 @@ export default function App() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
 
+  const getDomain = (url: string) => {
+    try {
+      return new URL(url).hostname;
+    } catch (e) {
+      return "unknown";
+    }
+  };
+
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -94,6 +102,7 @@ export default function App() {
   const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
 
   const getYouTubeId = (url: string) => {
+    if (!url) return null;
     const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/);
     return match ? match[1] : null;
   };
@@ -942,7 +951,7 @@ export default function App() {
               )}
             >
               {filteredBookmarks.map((bookmark) => {
-                const domain = new URL(bookmark.url).hostname;
+                const domain = getDomain(bookmark.url);
                 const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
                 
                 return (
@@ -1297,7 +1306,7 @@ export default function App() {
                     rel="noreferrer"
                     className="text-sm text-blue-600 hover:underline break-all flex items-center gap-1"
                   >
-                    <img src={`https://www.google.com/s2/favicons?domain=${new URL(selectedBookmark.url).hostname}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
+                    <img src={`https://www.google.com/s2/favicons?domain=${getDomain(selectedBookmark.url)}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
                     {selectedBookmark.url} <ExternalLink size={12} />
                   </a>
                 </div>
