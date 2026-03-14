@@ -593,7 +593,7 @@ export default function App() {
             <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center text-white">
               <BookOpen size={14} />
             </div>
-            Bookmarks
+            <span className="tracking-tight">LinkHub</span>
           </div>
           <button 
             onClick={() => setIsSettingsOpen(true)}
@@ -779,7 +779,7 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col min-w-0 bg-white">
-        <div className="min-h-[56px] py-2 border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0 flex-wrap gap-2">
+        <div className="min-h-[56px] py-3 border-b border-slate-200 flex flex-wrap items-center justify-between px-4 flex-shrink-0 gap-3">
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -792,7 +792,7 @@ export default function App() {
               onChange={toggleSelectAll}
               className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
-            <div className="flex items-center gap-2 text-lg font-semibold">
+            <div className="flex items-center gap-2 text-lg font-semibold whitespace-nowrap">
               {selectedCategoryId
                 ? categories.find((c) => c.id === selectedCategoryId)?.name
                 : selectedTagId
@@ -806,20 +806,20 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap justify-end">
+          <div className="flex items-center gap-3 flex-wrap flex-1 justify-end">
             {selectedBookmarkIds.size > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mr-auto">
                 <button
                   onClick={handleBulkRefresh}
                   disabled={isRefreshing}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
                 >
                   <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
                   Refresh ({selectedBookmarkIds.size})
                 </button>
                 <button
                   onClick={handleBulkDelete}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-sm font-medium transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-sm font-medium transition-colors whitespace-nowrap"
                 >
                   <Trash2 size={14} />
                   Delete ({selectedBookmarkIds.size})
@@ -827,7 +827,7 @@ export default function App() {
               </div>
             )}
             
-            <div className="flex items-center gap-2 border-r border-slate-200 pr-4 mr-2">
+            <div className="flex items-center gap-2">
               <div className="relative flex items-center">
                 <Filter size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
                 <select
@@ -861,7 +861,9 @@ export default function App() {
               </div>
             </div>
 
-            <div className="relative">
+            <div className="hidden sm:block w-px h-6 bg-slate-200 mx-1"></div>
+
+            <div className="relative flex-grow min-w-[150px] max-w-xs">
               <Search
                 size={16}
                 className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -871,45 +873,48 @@ export default function App() {
                 placeholder="Search..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-4 py-1.5 bg-slate-100 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-md text-sm w-48 transition-all outline-none"
+                className="pl-9 pr-4 py-1.5 bg-slate-100 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-md text-sm w-full transition-all outline-none"
               />
             </div>
-            <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
-              <button
-                onClick={() => setViewMode("list")}
-                className={cn(
-                  "p-1 rounded-sm",
-                  viewMode === "list"
-                    ? "bg-white shadow-sm text-slate-800"
-                    : "text-slate-400 hover:text-slate-600",
-                )}
-              >
-                <ListIcon size={16} />
-              </button>
-              <button
-                onClick={() => setViewMode("grid")}
-                className={cn(
-                  "p-1 rounded-sm",
-                  viewMode === "grid"
-                    ? "bg-white shadow-sm text-slate-800"
-                    : "text-slate-400 hover:text-slate-600",
-                )}
-              >
-                <LayoutGrid size={16} />
-              </button>
-            </div>
             
-            <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
-              <select
-                value={itemSize}
-                onChange={(e) => setItemSize(e.target.value as any)}
-                className="bg-transparent border-none text-xs text-slate-600 focus:ring-0 cursor-pointer outline-none pl-2 pr-1 py-1 appearance-none"
-              >
-                <option value="small">Small</option>
-                <option value="medium">Medium</option>
-                <option value="large">Large</option>
-              </select>
-              <ChevronDown size={12} className="text-slate-400 self-center mr-1 pointer-events-none" />
+            <div className="flex items-center gap-2">
+              <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
+                <button
+                  onClick={() => setViewMode("list")}
+                  className={cn(
+                    "p-1 rounded-sm",
+                    viewMode === "list"
+                      ? "bg-white shadow-sm text-slate-800"
+                      : "text-slate-400 hover:text-slate-600",
+                  )}
+                >
+                  <ListIcon size={16} />
+                </button>
+                <button
+                  onClick={() => setViewMode("grid")}
+                  className={cn(
+                    "p-1 rounded-sm",
+                    viewMode === "grid"
+                      ? "bg-white shadow-sm text-slate-800"
+                      : "text-slate-400 hover:text-slate-600",
+                  )}
+                >
+                  <LayoutGrid size={16} />
+                </button>
+              </div>
+              
+              <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
+                <select
+                  value={itemSize}
+                  onChange={(e) => setItemSize(e.target.value as any)}
+                  className="bg-transparent border-none text-xs text-slate-600 focus:ring-0 cursor-pointer outline-none pl-2 pr-1 py-1 appearance-none"
+                >
+                  <option value="small">Small</option>
+                  <option value="medium">Medium</option>
+                  <option value="large">Large</option>
+                </select>
+                <ChevronDown size={12} className="text-slate-400 self-center mr-1 pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>

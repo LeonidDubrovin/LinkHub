@@ -58,7 +58,7 @@ export function SettingsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col h-[500px]">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col h-[550px]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
           <h2 className="text-lg font-semibold text-slate-800">Settings</h2>
           <button
@@ -71,10 +71,10 @@ export function SettingsModal({
 
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-48 bg-slate-50 border-r border-slate-100 p-4 flex flex-col gap-1 flex-shrink-0">
+          <div className="w-56 bg-slate-50 border-r border-slate-100 p-4 flex flex-col gap-1 flex-shrink-0">
             <button
               onClick={() => setActiveTab("general")}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === "general"
                   ? "bg-blue-50 text-blue-700"
                   : "text-slate-600 hover:bg-slate-100"
@@ -85,7 +85,7 @@ export function SettingsModal({
             </button>
             <button
               onClick={() => setActiveTab("scraper")}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === "scraper"
                   ? "bg-blue-50 text-blue-700"
                   : "text-slate-600 hover:bg-slate-100"
@@ -96,7 +96,7 @@ export function SettingsModal({
             </button>
             <button
               onClick={() => setActiveTab("backup")}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === "backup"
                   ? "bg-blue-50 text-blue-700"
                   : "text-slate-600 hover:bg-slate-100"
