@@ -10,7 +10,7 @@
     "dev": "tsx server.ts",
     "dev:electron": "concurrently \"npm run dev\" \"wait-on tcp:3000 && tsup && cross-env START_SERVER=false electron .\"",
     "build": "vite build && tsup",
-    "build:electron": "npm run build && electron-builder",
+    "build:electron": "tsx generate-icon.js && npm run build && electron-builder",
     "preview": "vite preview",
     "clean": "rm -rf dist dist-electron release",
     "lint": "tsc --noEmit",
