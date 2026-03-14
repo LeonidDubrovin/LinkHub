@@ -22,6 +22,8 @@ import {
   ArrowUpDown,
   Filter,
   ChevronDown,
+  Pin,
+  PinOff,
 } from "lucide-react";
 import { cn } from "./lib/utils";
 
@@ -41,12 +43,31 @@ export default function App() {
   );
   const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set());
 
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(() => {
+    const saved = localStorage.getItem('inspectorWidth');
+    return saved ? parseInt(saved, 10) : 400;
+  });
+  const [isDragging, setIsDragging] = useState(false);
+
   const [inspectorTab, setInspectorTab] = useState<'details' | 'reader' | 'web'>('details');
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingLoading, setIsAddingLoading] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
+    return (localStorage.getItem('viewMode') as "list" | "grid") || "list";
+  });
+  const [itemSize, setItemSize] = useState<"small" | "medium" | "large">(() => {
+    return (localStorage.getItem('itemSize') as "small" | "medium" | "large") || "medium";
+  });
+  const [pinnedDomains, setPinnedDomains] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('pinnedDomains') || '[]');
+    } catch {
+      return [];
+    }
+  });
   const [searchQuery, setSearchQuery] = useState("");
 
   const [readerContent, setReaderContent] = useState<{
@@ -70,6 +91,18 @@ export default function App() {
   const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
 
   useEffect(() => {
+    localStorage.setItem('viewMode', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('itemSize', itemSize);
+  }, [itemSize]);
+
+  useEffect(() => {
+    localStorage.setItem('pinnedDomains', JSON.stringify(pinnedDomains));
+  }, [pinnedDomains]);
+
+  useEffect(() => {
     fetchCategories();
     fetchTags();
     fetchDomains();
@@ -79,8 +112,34 @@ export default function App() {
   useEffect(() => {
     fetchBookmarks();
     setSelectedBookmark(null);
+    setIsInspectorOpen(false);
     setReaderContent(null);
   }, [selectedCategoryId, selectedTagId, selectedDomain]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = window.innerWidth - e.clientX;
+      if (newWidth >= 250 && newWidth <= window.innerWidth - 350) {
+        setInspectorWidth(newWidth);
+      }
+    };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  useEffect(() => {
+    if (!isDragging) {
+      localStorage.setItem('inspectorWidth', inspectorWidth.toString());
+    }
+  }, [isDragging, inspectorWidth]);
 
   const fetchCategories = async () => {
     const res = await fetch("/api/categories");
@@ -98,6 +157,13 @@ export default function App() {
     const res = await fetch("/api/domains");
     const data = await res.json();
     setDomains(data);
+  };
+
+  const togglePinDomain = (domain: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinnedDomains(prev =>
+      prev.includes(domain) ? prev.filter(d => d !== domain) : [...prev, domain]
+    );
   };
 
   const fetchBookmarks = async () => {
@@ -504,7 +570,7 @@ export default function App() {
   });
 
   return (
-    <div className="flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden">
+    <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", isDragging && "select-none cursor-col-resize")}>
       {/* SIDEBAR */}
       <div className="w-64 bg-[#f1f3f5] border-r border-slate-200 flex flex-col flex-shrink-0">
         <div className="p-4 flex items-center justify-between">
@@ -596,12 +662,47 @@ export default function App() {
             })}
           </div>
 
-          {domains.length > 0 && (
+          {pinnedDomains.length > 0 && (
+            <div className="px-3 mb-4">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
+                Pinned
+              </div>
+              {domains.filter(d => pinnedDomains.includes(d.domain)).map((d) => (
+                <button
+                  key={`pinned-${d.domain}`}
+                  onClick={() => {
+                    setSelectedDomain(d.domain);
+                    setSelectedCategoryId(null);
+                    setSelectedTagId(null);
+                  }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
+                    selectedDomain === d.domain
+                      ? "bg-blue-100 text-blue-700 font-medium"
+                      : "hover:bg-slate-200 text-slate-700",
+                  )}
+                >
+                  <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
+                  <span className="truncate flex-1 text-left">{d.domain}</span>
+                  <span className="text-xs text-slate-400 font-medium group-hover:hidden">{d.count}</span>
+                  <div 
+                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-slate-600"
+                    onClick={(e) => togglePinDomain(d.domain, e)}
+                    title="Unpin resource"
+                  >
+                    <PinOff size={14} />
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {domains.filter(d => !pinnedDomains.includes(d.domain)).length > 0 && (
             <div className="px-3 mb-4">
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
                 Resources
               </div>
-              {domains.map((d) => (
+              {domains.filter(d => !pinnedDomains.includes(d.domain)).map((d) => (
                 <button
                   key={d.domain}
                   onClick={() => {
@@ -610,7 +711,7 @@ export default function App() {
                     setSelectedTagId(null);
                   }}
                   className={cn(
-                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5",
+                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
                     selectedDomain === d.domain
                       ? "bg-blue-100 text-blue-700 font-medium"
                       : "hover:bg-slate-200 text-slate-700",
@@ -618,7 +719,14 @@ export default function App() {
                 >
                   <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
-                  <span className="text-xs text-slate-400 font-medium">{d.count}</span>
+                  <span className="text-xs text-slate-400 font-medium group-hover:hidden">{d.count}</span>
+                  <div 
+                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-slate-600"
+                    onClick={(e) => togglePinDomain(d.domain, e)}
+                    title="Pin resource"
+                  >
+                    <Pin size={14} />
+                  </div>
                 </button>
               ))}
             </div>
@@ -656,7 +764,7 @@ export default function App() {
 
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col min-w-0 bg-white">
-        <div className="h-14 border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0">
+        <div className="min-h-[56px] py-2 border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0 flex-wrap gap-2">
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -683,7 +791,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {selectedBookmarkIds.size > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -775,10 +883,26 @@ export default function App() {
                 <LayoutGrid size={16} />
               </button>
             </div>
+            
+            <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
+              <select
+                value={itemSize}
+                onChange={(e) => setItemSize(e.target.value as any)}
+                className="bg-transparent border-none text-xs text-slate-600 focus:ring-0 cursor-pointer outline-none pl-2 pr-1 py-1 appearance-none"
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+              <ChevronDown size={12} className="text-slate-400 self-center mr-1 pointer-events-none" />
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        <div 
+          className="flex-1 overflow-y-auto p-4"
+          onClick={() => setIsInspectorOpen(false)}
+        >
           {filteredBookmarks.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-slate-400">
               <Globe size={48} className="mb-4 opacity-20" />
@@ -788,7 +912,9 @@ export default function App() {
             <div
               className={cn(
                 viewMode === "grid"
-                  ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                  ? itemSize === "small" ? "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3" :
+                    itemSize === "large" ? "grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-5" :
+                    "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4"
                   : "flex flex-col gap-2",
               )}
             >
@@ -799,15 +925,19 @@ export default function App() {
                 return (
                 <div
                   key={bookmark.id}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setSelectedBookmark(bookmark);
                     setReaderContent(null);
                     setInspectorTab('details');
+                    setIsInspectorOpen(true);
                   }}
                   className={cn(
                     "group cursor-pointer border rounded-lg overflow-hidden transition-all hover:shadow-md bg-white relative",
                     viewMode === "list"
-                      ? "flex items-center p-3 gap-4"
+                      ? itemSize === "small" ? "flex items-center p-2 gap-3" :
+                        itemSize === "large" ? "flex items-center p-4 gap-5" :
+                        "flex items-center p-3 gap-4"
                       : "flex flex-col",
                     selectedBookmark?.id === bookmark.id
                       ? "border-blue-500 ring-1 ring-blue-500"
@@ -842,7 +972,9 @@ export default function App() {
                     className={cn(
                       "bg-slate-100 flex-shrink-0 flex items-center justify-center overflow-hidden relative",
                       viewMode === "list"
-                        ? "w-12 h-12 rounded-md"
+                        ? itemSize === "small" ? "w-8 h-8 rounded-md" :
+                          itemSize === "large" ? "w-16 h-16 rounded-md" :
+                          "w-12 h-12 rounded-md"
                         : "w-full aspect-video border-b border-slate-100",
                     )}
                   >
@@ -853,11 +985,14 @@ export default function App() {
                   <div
                     className={cn(
                       "flex-1 min-w-0",
-                      viewMode === "grid" && "p-3",
+                      viewMode === "grid" && (itemSize === "small" ? "p-2" : itemSize === "large" ? "p-4" : "p-3"),
                     )}
                   >
                     <h3
-                      className="font-medium text-slate-800 truncate"
+                      className={cn(
+                        "font-medium text-slate-800 truncate",
+                        itemSize === "small" ? "text-sm" : itemSize === "large" ? "text-lg" : "text-base"
+                      )}
                       title={bookmark.title || bookmark.url}
                     >
                       {bookmark.title || bookmark.url}
@@ -923,9 +1058,26 @@ export default function App() {
       </div>
 
       {/* RIGHT PANEL - INSPECTOR / READER */}
-      {selectedBookmark && (
-        <div className="w-96 lg:w-[400px] xl:w-[480px] border-l border-slate-200 bg-white flex flex-col flex-shrink-0 shadow-[-4px_0_24px_rgba(0,0,0,0.02)]">
-          <div className="h-14 border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0">
+      {selectedBookmark && isInspectorOpen && (
+        <div 
+          className="relative border-l border-slate-200 bg-white flex flex-col flex-shrink-0 shadow-[-4px_0_24px_rgba(0,0,0,0.02)]"
+          style={{ width: `${inspectorWidth}px`, minWidth: '250px', maxWidth: 'calc(100vw - 300px)' }}
+        >
+          {/* Resizer Handle */}
+          <div 
+            className="absolute left-0 top-0 bottom-0 w-6 -ml-3 cursor-col-resize z-50 group flex justify-center"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+          >
+            <div className={cn(
+              "h-full transition-all duration-200",
+              isDragging ? "w-1.5 bg-blue-500" : "w-[1px] bg-transparent group-hover:w-1.5 group-hover:bg-blue-400"
+            )} />
+          </div>
+
+          <div className="min-h-[56px] py-2 border-b border-slate-200 flex items-center justify-between px-4 flex-shrink-0 flex-wrap gap-2">
             <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
               <button 
                 onClick={() => setInspectorTab('details')}
@@ -964,10 +1116,11 @@ export default function App() {
                   >
                     <Trash2 size={16} />
                   </button>
+                  <div className="w-px h-4 bg-slate-200 mx-1" />
                   <button
-                    onClick={() => setSelectedBookmark(null)}
+                    onClick={() => setIsInspectorOpen(false)}
                     className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-md"
-                    title="Close Selection"
+                    title="Close Sidebar"
                   >
                     <X size={18} />
                   </button>

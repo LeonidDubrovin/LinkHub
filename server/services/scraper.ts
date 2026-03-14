@@ -6,25 +6,45 @@ import { categorizeWithAI } from "./ai.js";
 
 export async function fetchBookmarkData(url: string) {
   // 1. Fetch HTML
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    },
-  });
-  const html = await response.text();
+  // Use a bot User-Agent (like Twitterbot or Googlebot). Many sites (like Kinopoisk) 
+  // block generic fetches but explicitly allow social bots to generate link previews.
+  let html = "";
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; Twitterbot/1.0)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+      },
+    });
+    html = await response.text();
+  } catch (e) {
+    console.error("Fetch failed with Twitterbot, trying generic...", e);
+    try {
+      const fallbackResponse = await fetch(url);
+      html = await fallbackResponse.text();
+    } catch (fallbackErr) {
+      console.error("Fallback fetch failed", fallbackErr);
+    }
+  }
 
   // 2. Extract Metadata
   const $ = cheerio.load(html);
   let title =
     $('meta[property="og:title"]').attr("content") ||
+    $('meta[name="twitter:title"]').attr("content") ||
     $("title").text() ||
     url;
   let description =
     $('meta[property="og:description"]').attr("content") ||
+    $('meta[name="twitter:description"]').attr("content") ||
     $('meta[name="description"]').attr("content") ||
     "";
-  let cover_image_url = $('meta[property="og:image"]').attr("content") || "";
+  let cover_image_url = 
+    $('meta[property="og:image"]').attr("content") || 
+    $('meta[name="twitter:image"]').attr("content") || 
+    "";
+    
   const extractedImages = new Set<string>();
 
   // YouTube specific handling
@@ -63,8 +83,14 @@ export async function fetchBookmarkData(url: string) {
 
   if (cover_image_url) extractedImages.add(cover_image_url);
 
+  // Extract multiple og:images if available
+  $('meta[property="og:image"]').each((i, el) => {
+    const content = $(el).attr("content");
+    if (content) extractedImages.add(content);
+  });
+
   $("img").each((i, el) => {
-    let src = $(el).attr("src");
+    let src = $(el).attr("src") || $(el).attr("data-src");
     if (src) {
       if (src.startsWith("//")) src = "https:" + src;
       else if (src.startsWith("/")) {
@@ -72,13 +98,38 @@ export async function fetchBookmarkData(url: string) {
           src = new URL(src, url).href;
         } catch (e) {}
       }
-      if (src.startsWith("http") && !src.includes("favicon") && !src.includes("icon") && !src.includes("logo") && !src.includes("spinner")) {
+      
+      const width = $(el).attr("width");
+      const height = $(el).attr("height");
+      const className = $(el).attr("class") || "";
+      const alt = $(el).attr("alt") || "";
+      
+      const isJunk = 
+        src.includes("favicon") || 
+        src.includes("icon") || 
+        src.includes("logo") || 
+        src.includes("spinner") ||
+        src.includes("avatar") ||
+        src.includes("badge") ||
+        src.includes("emoji") ||
+        src.includes("tracker") ||
+        src.includes("pixel") ||
+        src.endsWith(".svg") ||
+        src.endsWith(".gif") ||
+        src.startsWith("data:image") ||
+        className.toLowerCase().includes("logo") ||
+        className.toLowerCase().includes("icon") ||
+        alt.toLowerCase().includes("logo");
+        
+      const isTooSmall = (width && parseInt(width) < 100) || (height && parseInt(height) < 100);
+
+      if (src.startsWith("http") && !isJunk && !isTooSmall) {
         extractedImages.add(src);
       }
     }
   });
 
-  const images_json = JSON.stringify(Array.from(extractedImages).slice(0, 3));
+  const images_json = JSON.stringify(Array.from(extractedImages).slice(0, 5));
 
   // 3. Extract Content for Reader View
   const dom = new JSDOM(html, { url });
@@ -101,8 +152,8 @@ export async function fetchBookmarkData(url: string) {
   );
 
   return {
-    title,
-    description,
+    title: title.trim(),
+    description: description.trim(),
     cover_image_url,
     images_json,
     content_text,
