@@ -22,6 +22,9 @@ jobs:
     - name: Install dependencies
       run: npm install
 
+    - name: Run unit tests
+      run: npm run test
+
     - name: Build and Package Electron App
       run: npm run build:electron
       env:
@@ -31,4 +34,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: LinkHub-Windows-Portable
-        path: release/*.exe 
+        path: release/*.exe
