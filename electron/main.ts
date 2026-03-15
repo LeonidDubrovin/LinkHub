@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let serverStarted = false;
+let serverPort = 3000;
 
 async function createWindow() {
   // Set DATA_DIR before starting the server so the DB is stored in the correct location
@@ -42,8 +43,6 @@ async function createWindow() {
     }
   }
 
-  const { startServer } = await import("../server.js");
-
   // Determine icon path (dist in prod, public in dev)
   let iconPath = path.join(__dirname, "../dist/icon.png");
   if (!fs.existsSync(iconPath)) {
@@ -66,14 +65,20 @@ async function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setMenu(null);
 
-  // Start the Express server only once
-  if (!serverStarted) {
-    await startServer(true);
-    serverStarted = true;
+  // Start the Express server only once, and ONLY in production
+  // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
+  if (app.isPackaged && !serverStarted) {
+    try {
+      const { startServer } = await import("../server.js");
+      serverPort = await startServer(true);
+      serverStarted = true;
+    } catch (e) {
+      console.error("Failed to start server:", e);
+    }
   }
 
   // Load the web app
-  mainWindow.loadURL("http://localhost:3000");
+  mainWindow.loadURL(`http://localhost:${serverPort}`);
 
   mainWindow.on("closed", () => {
     mainWindow = null;

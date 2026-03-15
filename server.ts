@@ -111,7 +111,7 @@ app.all("/cdn-cgi/*", async (req, res) => {
 // API Routes
 app.use("/api", apiRoutes);
 
-export async function startServer(isElectron = false) {
+export async function startServer(isElectron = false): Promise<number> {
   if (process.env.NODE_ENV !== "production" && !isElectron) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -134,10 +134,26 @@ export async function startServer(isElectron = false) {
     });
   }
 
-  return new Promise<void>((resolve) => {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-      resolve();
+  return new Promise<number>((resolve, reject) => {
+    // In production/Electron, use port 0 to get a random free port if 3000 is taken,
+    // or just try 3000 first and fallback. For simplicity, if isElectron is true, we can just use 0.
+    // Wait, if we use 0, it will always be random. Let's try PORT first.
+    const targetPort = isElectron ? 0 : PORT;
+    
+    const server = app.listen(targetPort, "0.0.0.0", () => {
+      const actualPort = (server.address() as any).port;
+      console.log(`Server running on http://localhost:${actualPort}`);
+      resolve(actualPort);
+    });
+
+    server.on('error', (e: any) => {
+      if (e.code === 'EADDRINUSE' && !isElectron) {
+        console.log(`Port ${PORT} is already in use. Assuming server is already running.`);
+        resolve(PORT);
+      } else {
+        console.error('Server error:', e);
+        reject(e);
+      }
     });
   });
 }
