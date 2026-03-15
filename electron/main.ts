@@ -56,8 +56,8 @@ async function createWindow() {
     autoHideMenuBar: true, // Hide the top menu bar
     icon: iconPath,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
     },
   });
 
@@ -79,6 +79,14 @@ async function createWindow() {
 
   // Load the web app
   mainWindow.loadURL(`http://localhost:${serverPort}`);
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+  });
+
+  mainWindow.webContents.on('crashed', () => {
+    console.error('WebContents crashed');
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;

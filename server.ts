@@ -119,6 +119,18 @@ export async function startServer(isElectron = false): Promise<number> {
       appType: "spa",
     });
     app.use(vite.middlewares);
+
+    app.use("*", async (req, res, next) => {
+      try {
+        const url = req.originalUrl;
+        let template = await import("fs/promises").then(fs => fs.readFile(path.resolve(__dirname, "index.html"), "utf-8"));
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ "Content-Type": "text/html" }).end(template);
+      } catch (e: any) {
+        vite.ssrFixStacktrace(e);
+        next(e);
+      }
+    });
   } else {
     // In production or Electron, serve static files from dist
     // Resolve dist path depending on whether we are running bundled in dist-electron or directly
