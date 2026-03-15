@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, globalShortcut } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -86,6 +86,18 @@ async function createWindow() {
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription);
+    if (mainWindow) {
+      mainWindow.loadURL(`data:text/html;charset=utf-8,
+        <html>
+          <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
+            <h1 style="color: #e11d48;">Failed to connect to local server</h1>
+            <p>Error: ${errorCode} (${errorDescription})</p>
+            <p>The local server might have crashed or failed to start.</p>
+            <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
+          </body>
+        </html>
+      `);
+    }
   });
 
   mainWindow.webContents.on('crashed', () => {
@@ -97,7 +109,25 @@ async function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    if (mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+
+  globalShortcut.register('F12', () => {
+    if (mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+});
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll();
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
