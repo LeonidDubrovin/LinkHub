@@ -78,7 +78,11 @@ async function createWindow() {
   }
 
   // Load the web app
-  mainWindow.loadURL(`http://localhost:${serverPort}`);
+  mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
+
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription);
