@@ -13,5 +13,6 @@ server-loaded.txt
 data/
 linkhub.config.json
 
-# Игнорируем папку .github, чтобы AI Studio не удалял и не перезаписывал GitHub Actions
-.github/
+# Игнорируем всё в .github кроме workflows (workflows нужно версировать)
+.github/*
+!.github/workflows/
