@@ -65,35 +65,39 @@ async function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setMenu(null);
 
-  // Start the Express server only once, and ONLY in production
-  // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
-  if (app.isPackaged && !serverStarted) {
-    try {
-      // @ts-ignore - server.js is generated in the same directory by tsup
-      const { startServer } = await import("./server.js");
-      serverPort = await startServer(true);
-      serverStarted = true;
-    } catch (e: any) {
-      console.error("Failed to start server:", e);
-      mainWindow.loadURL(`data:text/html;charset=utf-8,
-        <html>
-          <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
-            <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
-            <p>The internal server encountered an error and could not start.</p>
-            <p>Error details: ${e.message || String(e)}</p>
-            <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
-          </body>
-        </html>
-      `);
-      return; // Stop execution, don't try to load the web app
-    }
-  }
+   // Start the Express server only once, and ONLY in production
+   // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
+   if (app.isPackaged && !serverStarted) {
+     try {
+       // @ts-ignore - server.js is generated in the same directory by tsup
+       const { startServer } = await import("./server.js");
+       serverPort = await startServer(true);
+       serverStarted = true;
+     } catch (e: any) {
+       console.error("Failed to start server:", e);
+       mainWindow.loadURL(`data:text/html;charset=utf-8,
+         <html>
+           <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
+             <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
+             <p>The internal server encountered an error and could not start.</p>
+             <p>Error details: ${e.message || String(e)}</p>
+             <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
+           </body>
+         </html>
+       `);
+       return; // Stop execution, don't try to load the web app
+     }
+   } else if (!app.isPackaged && !serverStarted) {
+     // In development, assume npm run dev is already running on port 3000
+     serverPort = 3000;
+     serverStarted = true;
+   }
 
-  // Load the web app
-  mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
+   // Load the web app
+   mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
 
-  // Force open DevTools for debugging
-  mainWindow.webContents.openDevTools();
+   // Force open DevTools for debugging
+   // mainWindow.webContents.openDevTools();
 
   // Add a context menu to easily open DevTools
   mainWindow.webContents.on('context-menu', (e, props) => {
