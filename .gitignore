@@ -10,6 +10,8 @@ coverage/
 .env*
 !.env.example
 server-loaded.txt
+data/
+linkhub.config.json
 
 # Игнорируем папку .github, чтобы AI Studio не удалял и не перезаписывал GitHub Actions
 .github/
