@@ -81,7 +81,6 @@ export default function App() {
     byline: string;
   } | null>(null);
   const [isReaderLoading, setIsReaderLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
 
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
@@ -157,21 +156,36 @@ export default function App() {
   }, [isDragging, inspectorWidth]);
 
   const fetchCategories = async () => {
-    const res = await fetch("/api/categories");
-    const data = await res.json();
-    setCategories(data);
+    try {
+      const res = await fetch("/api/categories");
+      const data = await res.json();
+      setCategories(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to fetch categories", e);
+      setCategories([]);
+    }
   };
 
   const fetchTags = async () => {
-    const res = await fetch("/api/tags");
-    const data = await res.json();
-    setTags(data);
+    try {
+      const res = await fetch("/api/tags");
+      const data = await res.json();
+      setTags(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to fetch tags", e);
+      setTags([]);
+    }
   };
 
   const fetchDomains = async () => {
-    const res = await fetch("/api/domains");
-    const data = await res.json();
-    setDomains(data);
+    try {
+      const res = await fetch("/api/domains");
+      const data = await res.json();
+      setDomains(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to fetch domains", e);
+      setDomains([]);
+    }
   };
 
   const togglePinDomain = (domain: string, e: React.MouseEvent) => {
@@ -183,19 +197,30 @@ export default function App() {
 
   const fetchBookmarks = async () => {
     let url = "/api/bookmarks?";
-    if (selectedCategoryId) url += `categoryId=${selectedCategoryId}&`;
-    if (selectedTagId) url += `tagId=${selectedTagId}&`;
-    if (selectedDomain) url += `domain=${selectedDomain}&`;
+    if (selectedCategoryId) url += `categoryId=${encodeURIComponent(selectedCategoryId)}&`;
+    if (selectedTagId) url += `tagId=${encodeURIComponent(selectedTagId)}&`;
+    if (selectedDomain) url += `domain=${encodeURIComponent(selectedDomain)}&`;
 
-    const res = await fetch(url);
-    const data = await res.json();
-    setBookmarks(data);
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      setBookmarks(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to fetch bookmarks", e);
+      setBookmarks([]);
+    }
   };
 
   const handleAddBookmark = async (newUrls: string) => {
     if (!newUrls) return;
 
-    const urls = newUrls.split('\n').map(u => u.trim()).filter(u => u);
+    const urls = newUrls.split('\n').map(u => {
+      let trimmed = u.trim();
+      if (trimmed && !trimmed.match(/^https?:\/\//i)) {
+        trimmed = `https://${trimmed}`;
+      }
+      return trimmed;
+    }).filter(u => u);
     if (urls.length === 0) return;
 
     setIsAddingLoading(true);
@@ -250,10 +275,18 @@ export default function App() {
             fetchDomains();
             
             // Trigger refresh for all newly added bookmarks
-            addedUrls.forEach((r: any) => {
+            const refreshPromises = addedUrls.map((r: any) => {
               if (r.needsRefresh) {
-                handleRefreshBookmark(r.id);
+                return handleRefreshBookmark(r.id, true);
               }
+              return Promise.resolve();
+            });
+            
+            Promise.all(refreshPromises).then(() => {
+              fetchBookmarks();
+              fetchCategories();
+              fetchTags();
+              fetchDomains();
             });
           }
         } else {
@@ -268,31 +301,32 @@ export default function App() {
     }
   };
 
-  const handleRefreshBookmark = async (id: string) => {
-    setIsRefreshing(true);
+  const handleRefreshBookmark = async (id: string, skipFetch = false) => {
     setRefreshingBookmarkIds(prev => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/bookmarks/${id}/refresh`, { method: 'POST' });
       if (res.ok) {
-        await fetchBookmarks();
-        await fetchCategories();
-        await fetchTags();
-        await fetchDomains();
-        const updatedBookmarksRes = await fetch(`/api/bookmarks`);
-        const updatedBookmarks = await updatedBookmarksRes.json();
-        const updated = updatedBookmarks.find((b: any) => b.id === id);
-        if (updated) {
-          setSelectedBookmark(updated);
+        if (!skipFetch) {
+          await fetchBookmarks();
+          await fetchCategories();
+          await fetchTags();
+          await fetchDomains();
         }
-        setToast({ message: 'Bookmark refreshed successfully', type: 'success' });
+        const updatedBookmarkRes = await fetch(`/api/bookmarks/${id}`);
+        if (updatedBookmarkRes.ok) {
+          const updated = await updatedBookmarkRes.json();
+          setSelectedBookmark(prev => prev?.id === id ? updated : prev);
+        }
+        if (!skipFetch) {
+          setToast({ message: 'Bookmark refreshed successfully', type: 'success' });
+        }
       } else {
-        setToast({ message: 'Failed to refresh bookmark', type: 'error' });
+        if (!skipFetch) setToast({ message: 'Failed to refresh bookmark', type: 'error' });
       }
     } catch (e) {
       console.error("Failed to refresh", e);
-      setToast({ message: 'Failed to refresh bookmark', type: 'error' });
+      if (!skipFetch) setToast({ message: 'Failed to refresh bookmark', type: 'error' });
     } finally {
-      setIsRefreshing(false);
       setRefreshingBookmarkIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(id);
@@ -390,7 +424,6 @@ export default function App() {
       title: "Refresh Bookmarks",
       message: `Are you sure you want to refresh information for ${selectedBookmarkIds.size} bookmarks? This may take some time.`,
       onConfirm: async () => {
-        setIsRefreshing(true);
         const ids = Array.from(selectedBookmarkIds);
         setRefreshingBookmarkIds(prev => {
           const newSet = new Set(prev);
@@ -412,10 +445,9 @@ export default function App() {
           await fetchDomains();
           
           if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
-            const updatedBookmarksRes = await fetch(`/api/bookmarks`);
-            const updatedBookmarks = await updatedBookmarksRes.json();
-            const updated = updatedBookmarks.find((b: any) => b.id === selectedBookmark.id);
-            if (updated) {
+            const updatedBookmarkRes = await fetch(`/api/bookmarks/${selectedBookmark.id}`);
+            if (updatedBookmarkRes.ok) {
+              const updated = await updatedBookmarkRes.json();
               setSelectedBookmark(updated);
             }
           }
@@ -430,7 +462,6 @@ export default function App() {
           console.error("Failed to bulk refresh", e);
           setToast({ message: 'Failed to refresh some bookmarks', type: 'error' });
         } finally {
-          setIsRefreshing(false);
           setRefreshingBookmarkIds(prev => {
             const newSet = new Set(prev);
             ids.forEach(id => newSet.delete(id));
@@ -497,7 +528,7 @@ export default function App() {
           const res = await fetch("/api/restore", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(backupData),
+            body: text,
           });
 
           if (!res.ok) {
@@ -811,10 +842,10 @@ export default function App() {
               <div className="flex items-center gap-2 mr-auto">
                 <button
                   onClick={handleBulkRefresh}
-                  disabled={isRefreshing}
+                  disabled={refreshingBookmarkIds.size > 0}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-md text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
                 >
-                  <RefreshCw size={14} className={isRefreshing ? "animate-spin" : ""} />
+                  <RefreshCw size={14} className={refreshingBookmarkIds.size > 0 ? "animate-spin" : ""} />
                   Refresh ({selectedBookmarkIds.size})
                 </button>
                 <button
@@ -1387,6 +1418,7 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         onBackup={handleBackup}
         onRestore={handleRestore}
+        setToast={setToast}
       />
 
       {/* TOAST NOTIFICATION */}

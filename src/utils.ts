@@ -9,6 +9,6 @@ export const getDomain = (url: string): string => {
 
 export const getYouTubeId = (url: string): string | null => {
   if (!url) return null;
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/);
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([^&?]+)/);
   return match ? match[1] : null;
 };

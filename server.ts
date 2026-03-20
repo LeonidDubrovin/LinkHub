@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 export const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
 
 // Proxy Cloudflare challenge requests
 app.all("/cdn-cgi/*", async (req, res) => {

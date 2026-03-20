@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow: BrowserWindow | null = null;
 let serverStarted = false;
-let serverPort = 3000;
+let serverPort = 38472;
 
 async function createWindow() {
   // Set DATA_DIR before starting the server so the DB is stored in the correct location
@@ -69,20 +69,57 @@ async function createWindow() {
   // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
   if (app.isPackaged && !serverStarted) {
     try {
-      const { startServer } = await import("../server.js");
+      // @ts-ignore - server.js is generated in the same directory by tsup
+      const { startServer } = await import("./server.js");
       serverPort = await startServer(true);
       serverStarted = true;
-    } catch (e) {
+    } catch (e: any) {
       console.error("Failed to start server:", e);
+      mainWindow.loadURL(`data:text/html;charset=utf-8,
+        <html>
+          <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
+            <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
+            <p>The internal server encountered an error and could not start.</p>
+            <p>Error details: ${e.message || String(e)}</p>
+            <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
+          </body>
+        </html>
+      `);
+      return; // Stop execution, don't try to load the web app
     }
   }
 
   // Load the web app
   mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
 
-  if (!app.isPackaged) {
-    mainWindow.webContents.openDevTools();
-  }
+  // Force open DevTools for debugging
+  mainWindow.webContents.openDevTools();
+
+  // Add a context menu to easily open DevTools
+  mainWindow.webContents.on('context-menu', (e, props) => {
+    const { Menu } = require('electron');
+    const menu = Menu.buildFromTemplate([
+      {
+        label: 'Inspect Element',
+        click: () => {
+          mainWindow?.webContents.inspectElement(props.x, props.y);
+        }
+      },
+      {
+        label: 'Toggle Developer Tools',
+        click: () => {
+          mainWindow?.webContents.toggleDevTools();
+        }
+      },
+      {
+        label: 'Reload',
+        click: () => {
+          mainWindow?.webContents.reload();
+        }
+      }
+    ]);
+    menu.popup();
+  });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription);
@@ -100,8 +137,8 @@ async function createWindow() {
     }
   });
 
-  mainWindow.webContents.on('crashed', () => {
-    console.error('WebContents crashed');
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('WebContents crashed or was killed:', details.reason);
   });
 
   mainWindow.on("closed", () => {

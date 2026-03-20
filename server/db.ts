@@ -27,6 +27,8 @@ console.log(`Using database at: ${dbPath}`);
 
 // Initialize SQLite Database
 const db = new Database(dbPath);
+db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 // Create tables
 db.exec(`
@@ -68,6 +70,11 @@ db.exec(`
     FOREIGN KEY (bookmark_id) REFERENCES bookmarks(id),
     FOREIGN KEY (tag_id) REFERENCES tags(id)
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 // Migrations for existing databases
@@ -80,7 +87,7 @@ try {
 } catch (e) { /* ignore if exists */ }
 
 try {
-  const allBookmarks = db.prepare("SELECT id, url FROM bookmarks").all() as any[];
+  const allBookmarks = db.prepare("SELECT id, url FROM bookmarks WHERE domain IS NULL").all() as any[];
   const updateDomain = db.prepare("UPDATE bookmarks SET domain = ? WHERE id = ?");
   for (const b of allBookmarks) {
     try {

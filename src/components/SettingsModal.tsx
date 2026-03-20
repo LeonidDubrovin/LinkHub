@@ -1,24 +1,30 @@
 import React, { useState, useEffect } from "react";
-import { X, Download, Upload, Folder, Globe, Database, Settings } from "lucide-react";
+import { X, Download, Upload, Folder, Globe, Database, Settings, Sparkles } from "lucide-react";
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onBackup: () => void;
   onRestore: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  setToast: (toast: { message: string; type: 'success' | 'error' | 'info' } | null) => void;
 }
 
-type Tab = "general" | "scraper" | "backup";
+type Tab = "general" | "ai" | "scraper" | "backup";
 
 export function SettingsModal({
   isOpen,
   onClose,
   onBackup,
   onRestore,
+  setToast,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const [dataDir, setDataDir] = useState("");
   const [userAgent, setUserAgent] = useState("");
+  const [llmProvider, setLlmProvider] = useState("gemini");
+  const [llmApiKey, setLlmApiKey] = useState("");
+  const [llmModel, setLlmModel] = useState("gemini-3-flash-preview");
+  const [llmEndpoint, setLlmEndpoint] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -26,8 +32,12 @@ export function SettingsModal({
       fetch("/api/settings")
         .then((res) => res.json())
         .then((data) => {
-          if (data.dataDir) setDataDir(data.dataDir);
-          if (data.userAgent) setUserAgent(data.userAgent);
+          if (data.dataDir !== undefined) setDataDir(data.dataDir);
+          if (data.userAgent !== undefined) setUserAgent(data.userAgent);
+          if (data.llmProvider !== undefined) setLlmProvider(data.llmProvider);
+          if (data.llmApiKey !== undefined) setLlmApiKey(data.llmApiKey);
+          if (data.llmModel !== undefined) setLlmModel(data.llmModel);
+          if (data.llmEndpoint !== undefined) setLlmEndpoint(data.llmEndpoint);
         })
         .catch(console.error);
     }
@@ -39,16 +49,23 @@ export function SettingsModal({
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataDir, userAgent }),
+        body: JSON.stringify({ 
+          dataDir, 
+          userAgent,
+          llmProvider,
+          llmApiKey,
+          llmModel,
+          llmEndpoint
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        alert(data.message);
+        setToast({ message: data.message || "Settings saved successfully", type: "success" });
       } else {
-        alert(data.error || "Failed to save settings");
+        setToast({ message: data.error || "Failed to save settings", type: "error" });
       }
     } catch (e) {
-      alert("Failed to save settings");
+      setToast({ message: "Failed to save settings", type: "error" });
     } finally {
       setIsSaving(false);
     }
@@ -82,6 +99,17 @@ export function SettingsModal({
             >
               <Settings size={16} />
               General
+            </button>
+            <button
+              onClick={() => setActiveTab("ai")}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                activeTab === "ai"
+                  ? "bg-blue-50 text-blue-700"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              <Sparkles size={16} />
+              AI & LLM
             </button>
             <button
               onClick={() => setActiveTab("scraper")}
@@ -133,7 +161,84 @@ export function SettingsModal({
                 
                 <button
                   onClick={handleSaveSettings}
-                  disabled={isSaving || !dataDir || !userAgent}
+                  disabled={isSaving || !dataDir}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors mt-6"
+                >
+                  {isSaving ? "Saving..." : "Save Settings"}
+                </button>
+              </div>
+            )}
+
+            {activeTab === "ai" && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-sm font-medium text-slate-900 mb-3">AI Categorization</h3>
+                  <p className="text-sm text-slate-500 mb-4">
+                    Configure the AI model used to automatically categorize and tag your bookmarks.
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Provider</label>
+                      <select
+                        value={llmProvider}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setLlmProvider(val);
+                          if (val === "gemini") setLlmModel("gemini-3-flash-preview");
+                          else if (val === "openai") setLlmModel("gpt-4o-mini");
+                          else if (val === "anthropic") setLlmModel("claude-3-haiku-20240307");
+                          else if (val === "custom") setLlmModel("llama-3.1-8b-instruct");
+                        }}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      >
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="custom">Custom (OpenAI Compatible)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">API Key</label>
+                      <input
+                        type="password"
+                        value={llmApiKey}
+                        onChange={(e) => setLlmApiKey(e.target.value)}
+                        placeholder={llmProvider === "gemini" ? "Leave empty to use default environment key" : "sk-..."}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Model Name</label>
+                      <input
+                        type="text"
+                        value={llmModel}
+                        onChange={(e) => setLlmModel(e.target.value)}
+                        placeholder="e.g. gpt-4o-mini"
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {llmProvider === "custom" && (
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 mb-1">Custom Endpoint URL</label>
+                        <input
+                          type="text"
+                          value={llmEndpoint}
+                          onChange={(e) => setLlmEndpoint(e.target.value)}
+                          placeholder="e.g. http://localhost:11434/v1"
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                <button
+                  onClick={handleSaveSettings}
+                  disabled={isSaving}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors mt-6"
                 >
                   {isSaving ? "Saving..." : "Save Settings"}
@@ -185,7 +290,7 @@ export function SettingsModal({
                 
                 <button
                   onClick={handleSaveSettings}
-                  disabled={isSaving || !dataDir || !userAgent}
+                  disabled={isSaving || !userAgent}
                   className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors mt-6"
                 >
                   {isSaving ? "Saving..." : "Save Settings"}
@@ -216,9 +321,9 @@ export function SettingsModal({
                           const res = await fetch("/api/backup");
                           const data = await res.json();
                           await navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-                          alert("Backup copied to clipboard!");
+                          setToast({ message: "Backup copied to clipboard!", type: "success" });
                         } catch (e) {
-                          alert("Failed to copy backup to clipboard");
+                          setToast({ message: "Failed to copy backup to clipboard", type: "error" });
                         }
                       }}
                       className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-50 text-slate-700 hover:bg-slate-100 rounded-lg font-medium transition-colors"

@@ -31,24 +31,33 @@ export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Boo
     setValidImages(valid);
 
     const checkImages = async () => {
-      for (let i = 1; i < images.length; i++) {
-        const src = images[i];
+      const promises = images.slice(1).map(async (src) => {
         try {
           const img = new Image();
           img.referrerPolicy = "no-referrer";
-          img.src = src;
-          await new Promise((resolve, reject) => {
+          
+          const loadPromise = new Promise((resolve, reject) => {
             img.onload = () => resolve(img);
             img.onerror = reject;
           });
-          // Only include images that are reasonably large (not icons/badges)
+          
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
+          
+          img.src = src;
+          await Promise.race([loadPromise, timeoutPromise]);
+          
           if (img.naturalWidth >= 100 && img.naturalHeight >= 100) {
-            valid.push(src);
+            return src;
           }
         } catch (e) {}
-      }
-      if (isMounted && valid.length > 1) {
-        setValidImages([...valid]);
+        return null;
+      });
+      
+      const results = await Promise.all(promises);
+      const validResults = results.filter(Boolean) as string[];
+      
+      if (isMounted && validResults.length > 0) {
+        setValidImages([...valid, ...validResults]);
       }
     };
     
@@ -114,8 +123,11 @@ export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Boo
       referrerPolicy="no-referrer" 
       onError={(e) => {
         // If screenshot fails, fallback to favicon
-        (e.target as HTMLImageElement).src = faviconUrl;
-        (e.target as HTMLImageElement).className = viewMode === 'list' ? "w-6 h-6 opacity-50" : "w-16 h-16 opacity-20";
+        const target = e.target as HTMLImageElement;
+        if (target.src !== faviconUrl) {
+          target.src = faviconUrl;
+          target.className = viewMode === 'list' ? "w-6 h-6 opacity-50" : "w-16 h-16 opacity-20";
+        }
       }}
     />
   );

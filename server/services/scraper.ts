@@ -21,11 +21,18 @@ export async function fetchBookmarkData(url: string) {
         "Accept-Language": "en-US,en;q=0.5",
       },
     });
+    
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
     html = await response.text();
   } catch (e) {
     console.error(`Fetch failed with ${userAgent}, trying generic...`, e);
     try {
       const fallbackResponse = await fetch(url);
+      if (!fallbackResponse.ok && fallbackResponse.status !== 404) {
+        throw new Error(`Fallback HTTP error! status: ${fallbackResponse.status}`);
+      }
       html = await fallbackResponse.text();
     } catch (fallbackErr) {
       console.error("Fallback fetch failed", fallbackErr);
@@ -48,6 +55,12 @@ export async function fetchBookmarkData(url: string) {
     $('meta[property="og:image"]').attr("content") || 
     $('meta[name="twitter:image"]').attr("content") || 
     "";
+
+  if (cover_image_url) {
+    try {
+      cover_image_url = new URL(cover_image_url, url).href;
+    } catch (e) {}
+  }
     
   const extractedImages = new Set<string>();
 
@@ -59,6 +72,9 @@ export async function fetchBookmarkData(url: string) {
         const urlObj = new URL(url);
         if (urlObj.hostname.includes('youtube.com')) {
           videoId = urlObj.searchParams.get('v');
+          if (!videoId && urlObj.pathname.startsWith('/shorts/')) {
+            videoId = urlObj.pathname.split('/')[2];
+          }
         } else if (urlObj.hostname.includes('youtu.be')) {
           videoId = urlObj.pathname.slice(1);
         }
@@ -90,17 +106,21 @@ export async function fetchBookmarkData(url: string) {
   // Extract multiple og:images if available
   $('meta[property="og:image"]').each((i, el) => {
     const content = $(el).attr("content");
-    if (content) extractedImages.add(content);
+    if (content) {
+      try {
+        extractedImages.add(new URL(content, url).href);
+      } catch (e) {}
+    }
   });
 
   $("img").each((i, el) => {
     let src = $(el).attr("src") || $(el).attr("data-src");
     if (src) {
-      if (src.startsWith("//")) src = "https:" + src;
-      else if (src.startsWith("/")) {
-        try {
-          src = new URL(src, url).href;
-        } catch (e) {}
+      try {
+        src = new URL(src, url).href;
+      } catch (e) {
+        // If URL parsing fails, skip this image
+        return;
       }
       
       const width = $(el).attr("width");
