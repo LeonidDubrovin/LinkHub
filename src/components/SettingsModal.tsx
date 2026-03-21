@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Download, Upload, Folder, Globe, Database, Settings, Sparkles } from "lucide-react";
+import { X, Download, Upload, Folder, Globe, Database, Settings, Sparkles, TestTube } from "lucide-react";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,7 +9,21 @@ interface SettingsModalProps {
   setToast: (toast: { message: string; type: 'success' | 'error' | 'info' } | null) => void;
 }
 
-type Tab = "general" | "ai" | "scraper" | "backup";
+type Tab = "general" | "ai" | "heuristics" | "backup";
+
+interface LLmConfig {
+  enabled: boolean;
+  provider: string;
+  apiKey: string;
+  model: string;
+  autoCategorizeOnAdd: boolean;
+  fallbackToLocal: boolean;
+}
+
+interface LocalHeuristicsConfig {
+  enabled: boolean;
+  domainCategoryRules: Record<string, string>;
+}
 
 export function SettingsModal({
   isOpen,
@@ -21,11 +35,27 @@ export function SettingsModal({
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const [dataDir, setDataDir] = useState("");
   const [userAgent, setUserAgent] = useState("");
-  const [llmProvider, setLlmProvider] = useState("gemini");
-  const [llmApiKey, setLlmApiKey] = useState("");
-  const [llmModel, setLlmModel] = useState("gemini-3-flash-preview");
-  const [llmEndpoint, setLlmEndpoint] = useState("");
+  const [llm, setLlm] = useState<LLmConfig>({
+    enabled: false,
+    provider: 'openrouter',
+    apiKey: '',
+    model: 'stepfun/step-3.5-flash:free',
+    autoCategorizeOnAdd: true,
+    fallbackToLocal: true
+  });
+  const [localHeuristics, setLocalHeuristics] = useState<LocalHeuristicsConfig>({
+    enabled: true,
+    domainCategoryRules: {
+      "youtube.com": "Videos",
+      "youtu.be": "Videos",
+      "github.com": "Programming",
+      "npmjs.com": "Programming",
+      "dribbble.com": "Design",
+      "behance.com": "Design"
+    }
+  });
   const [isSaving, setIsSaving] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -34,10 +64,8 @@ export function SettingsModal({
         .then((data) => {
           if (data.dataDir !== undefined) setDataDir(data.dataDir);
           if (data.userAgent !== undefined) setUserAgent(data.userAgent);
-          if (data.llmProvider !== undefined) setLlmProvider(data.llmProvider);
-          if (data.llmApiKey !== undefined) setLlmApiKey(data.llmApiKey);
-          if (data.llmModel !== undefined) setLlmModel(data.llmModel);
-          if (data.llmEndpoint !== undefined) setLlmEndpoint(data.llmEndpoint);
+          if (data.llm) setLlm(data.llm);
+          if (data.localHeuristics) setLocalHeuristics(data.localHeuristics);
         })
         .catch(console.error);
     }
@@ -52,10 +80,8 @@ export function SettingsModal({
         body: JSON.stringify({ 
           dataDir, 
           userAgent,
-          llmProvider,
-          llmApiKey,
-          llmModel,
-          llmEndpoint
+          llm,
+          localHeuristics
         }),
       });
       const data = await res.json();
@@ -69,6 +95,64 @@ export function SettingsModal({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleTestConnection = async () => {
+    if (!llm.apiKey) {
+      setToast({ message: "Please enter API key first", type: "error" });
+      return;
+    }
+
+    setIsTesting(true);
+    try {
+      const res = await fetch("/api/llm/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: llm.provider,
+          apiKey: llm.apiKey,
+          model: llm.model
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setToast({ message: "Connection successful!", type: "success" });
+      } else {
+        setToast({ message: `Connection failed: ${data.error}`, type: "error" });
+      }
+    } catch (e) {
+      setToast({ message: "Connection test failed", type: "error" });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const handleDomainRuleChange = (domain: string, category: string) => {
+    setLocalHeuristics(prev => ({
+      ...prev,
+      domainCategoryRules: {
+        ...prev.domainCategoryRules,
+        [domain]: category
+      }
+    }));
+  };
+
+  const handleRemoveDomainRule = (domain: string) => {
+    setLocalHeuristics(prev => {
+      const newRules = { ...prev.domainCategoryRules };
+      delete newRules[domain];
+      return { ...prev, domainCategoryRules: newRules };
+    });
+  };
+
+  const handleAddDomainRule = () => {
+    setLocalHeuristics(prev => ({
+      ...prev,
+      domainCategoryRules: {
+        ...prev.domainCategoryRules,
+        "": ""
+      }
+    }));
   };
 
   if (!isOpen) return null;
@@ -112,15 +196,15 @@ export function SettingsModal({
               AI & LLM
             </button>
             <button
-              onClick={() => setActiveTab("scraper")}
+              onClick={() => setActiveTab("heuristics")}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                activeTab === "scraper"
+                activeTab === "heuristics"
                   ? "bg-blue-50 text-blue-700"
                   : "text-slate-600 hover:bg-slate-100"
               }`}
             >
               <Globe size={16} />
-              Web Scraper
+              Local Heuristics
             </button>
             <button
               onClick={() => setActiveTab("backup")}
@@ -137,102 +221,154 @@ export function SettingsModal({
 
           {/* Content */}
           <div className="flex-1 p-6 overflow-y-auto">
-            {activeTab === "general" && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-medium text-slate-900 mb-3">Data Directory</h3>
-                  <p className="text-sm text-slate-500 mb-4">
-                    Choose where your database and application files are stored.
-                  </p>
-                  
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-                      <Folder size={18} className="text-slate-400" />
-                      <input
-                        type="text"
-                        value={dataDir}
-                        onChange={(e) => setDataDir(e.target.value)}
-                        className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder:text-slate-400"
-                        placeholder="e.g. C:\LinkHub\Data"
-                      />
-                    </div>
-                  </div>
-                </div>
-                
-                <button
-                  onClick={handleSaveSettings}
-                  disabled={isSaving || !dataDir}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors mt-6"
-                >
-                  {isSaving ? "Saving..." : "Save Settings"}
-                </button>
-              </div>
-            )}
+             {activeTab === "general" && (
+               <div className="space-y-6">
+                 <div>
+                   <h3 className="text-sm font-medium text-slate-900 mb-3">Data Directory</h3>
+                   <p className="text-sm text-slate-500 mb-4">
+                     Choose where your database and application files are stored.
+                   </p>
+                   
+                   <div className="flex flex-col gap-3">
+                     <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                       <Folder size={18} className="text-slate-400" />
+                       <input
+                         type="text"
+                         value={dataDir}
+                         onChange={(e) => setDataDir(e.target.value)}
+                         className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder:text-slate-400"
+                         placeholder="e.g. C:\LinkHub\Data"
+                       />
+                     </div>
+                   </div>
+                 </div>
+
+                 <div>
+                   <h3 className="text-sm font-medium text-slate-900 mb-3">Web Scraper</h3>
+                   <p className="text-sm text-slate-500 mb-4">
+                     Set the User-Agent used when fetching link previews and reading content.
+                   </p>
+                   
+                   <div className="flex flex-col gap-3">
+                     <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
+                       <Globe size={18} className="text-slate-400 flex-shrink-0" />
+                       <input
+                         type="text"
+                         value={userAgent}
+                         onChange={(e) => setUserAgent(e.target.value)}
+                         className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder:text-slate-400"
+                         placeholder="Mozilla/5.0 (compatible; Twitterbot/1.0)"
+                       />
+                     </div>
+                   </div>
+                 </div>
+                 
+                 <button
+                   onClick={handleSaveSettings}
+                   disabled={isSaving || !dataDir}
+                   className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors mt-6"
+                 >
+                   {isSaving ? "Saving..." : "Save Settings"}
+                 </button>
+               </div>
+             )}
 
             {activeTab === "ai" && (
               <div className="space-y-6">
                 <div>
-                  <h3 className="text-sm font-medium text-slate-900 mb-3">AI Categorization</h3>
+                  <h3 className="text-sm font-medium text-slate-900 mb-3">LLM Categorization (OpenRouter)</h3>
                   <p className="text-sm text-slate-500 mb-4">
-                    Configure the AI model used to automatically categorize and tag your bookmarks.
+                    Configure OpenRouter to automatically categorize and tag your bookmarks using AI.
                   </p>
                   
                   <div className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="llmEnabled"
+                        checked={llm.enabled}
+                        onChange={(e) => setLlm(prev => ({ ...prev, enabled: e.target.checked }))}
+                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="llmEnabled" className="text-sm font-medium text-slate-700">Enable LLM categorization</label>
+                    </div>
+
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">Provider</label>
                       <select
-                        value={llmProvider}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setLlmProvider(val);
-                          if (val === "gemini") setLlmModel("gemini-3-flash-preview");
-                          else if (val === "openai") setLlmModel("gpt-4o-mini");
-                          else if (val === "anthropic") setLlmModel("claude-3-haiku-20240307");
-                          else if (val === "custom") setLlmModel("llama-3.1-8b-instruct");
-                        }}
+                        value={llm.provider}
+                        onChange={(e) => setLlm(prev => ({ ...prev, provider: e.target.value }))}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        disabled
                       >
-                        <option value="gemini">Google Gemini</option>
-                        <option value="openai">OpenAI</option>
-                        <option value="anthropic">Anthropic</option>
-                        <option value="custom">Custom (OpenAI Compatible)</option>
+                        <option value="openrouter">OpenRouter</option>
                       </select>
+                      <p className="text-xs text-slate-500 mt-1">Only OpenRouter is supported currently</p>
                     </div>
 
                     <div>
                       <label className="block text-xs font-medium text-slate-700 mb-1">API Key</label>
                       <input
                         type="password"
-                        value={llmApiKey}
-                        onChange={(e) => setLlmApiKey(e.target.value)}
-                        placeholder={llmProvider === "gemini" ? "Leave empty to use default environment key" : "sk-..."}
+                        value={llm.apiKey}
+                        onChange={(e) => setLlm(prev => ({ ...prev, apiKey: e.target.value }))}
+                        placeholder="sk-or-..."
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-xs font-medium text-slate-700 mb-1">Model Name</label>
-                      <input
-                        type="text"
-                        value={llmModel}
-                        onChange={(e) => setLlmModel(e.target.value)}
-                        placeholder="e.g. gpt-4o-mini"
+                      <label className="block text-xs font-medium text-slate-700 mb-1">Model</label>
+                      <select
+                        value={llm.model}
+                        onChange={(e) => setLlm(prev => ({ ...prev, model: e.target.value }))}
                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
+                      >
+                        <optgroup label="Free models">
+                          <option value="stepfun/step-3.5-flash:free">Step AI Step-3.5 Flash (Free)</option>
+                          <option value="nvidia/nemotron-3-super-120b-a12b:free">NVIDIA Nemotron-3 Super (Free)</option>
+                          <option value="arcee-ai/trinity-large-preview:free">Arcee Trinity Large (Free)</option>
+                        </optgroup>
+                        <optgroup label="Paid (low cost)">
+                          <option value="openai/gpt-4o-mini">OpenAI GPT-4o Mini (~$0.1/M)</option>
+                          <option value="anthropic/claude-3-haiku">Anthropic Claude 3 Haiku (~$0.2/M)</option>
+                        </optgroup>
+                      </select>
                     </div>
 
-                    {llmProvider === "custom" && (
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">Custom Endpoint URL</label>
-                        <input
-                          type="text"
-                          value={llmEndpoint}
-                          onChange={(e) => setLlmEndpoint(e.target.value)}
-                          placeholder="e.g. http://localhost:11434/v1"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        />
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="autoCategorize"
+                        checked={llm.autoCategorizeOnAdd}
+                        onChange={(e) => setLlm(prev => ({ ...prev, autoCategorizeOnAdd: e.target.checked }))}
+                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="autoCategorize" className="text-sm font-medium text-slate-700">Auto-categorize on add</label>
+                      <span className="text-xs text-slate-500">(automatically categorize when adding bookmarks)</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="fallbackLocal"
+                        checked={llm.fallbackToLocal}
+                        onChange={(e) => setLlm(prev => ({ ...prev, fallbackToLocal: e.target.checked }))}
+                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                      />
+                      <label htmlFor="fallbackLocal" className="text-sm font-medium text-slate-700">Fallback to local heuristics</label>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-200">
+                      <button
+                        onClick={handleTestConnection}
+                        disabled={isTesting || !llm.apiKey}
+                        className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+                      >
+                        <TestTube size={16} />
+                        {isTesting ? "Testing..." : "Test Connection"}
+                      </button>
+                    </div>
                   </div>
                 </div>
                 
@@ -246,57 +382,74 @@ export function SettingsModal({
               </div>
             )}
 
-            {activeTab === "scraper" && (
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-sm font-medium text-slate-900 mb-3">Web Scraper</h3>
-                  <p className="text-sm text-slate-500 mb-4">
-                    Set the User-Agent used when fetching link previews and reading content.
-                  </p>
-                  
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 transition-all">
-                      <Globe size={18} className="text-slate-400 flex-shrink-0" />
-                      <input
-                        type="text"
-                        value={userAgent}
-                        onChange={(e) => setUserAgent(e.target.value)}
-                        className="flex-1 bg-transparent border-none outline-none text-sm text-slate-700 placeholder:text-slate-400"
-                        placeholder="Mozilla/5.0..."
-                      />
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <button 
-                        onClick={() => setUserAgent("Mozilla/5.0 (compatible; Twitterbot/1.0)")}
-                        className="text-xs px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded"
-                      >
-                        Twitterbot (Recommended)
-                      </button>
-                      <button 
-                        onClick={() => setUserAgent("Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)")}
-                        className="text-xs px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded"
-                      >
-                        Googlebot
-                      </button>
-                      <button 
-                        onClick={() => setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")}
-                        className="text-xs px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded"
-                      >
-                        Chrome Desktop
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                
-                <button
-                  onClick={handleSaveSettings}
-                  disabled={isSaving || !userAgent}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors mt-6"
-                >
-                  {isSaving ? "Saving..." : "Save Settings"}
-                </button>
-              </div>
-            )}
+             {activeTab === "heuristics" && (
+               <div className="space-y-6">
+                 <div>
+                   <h3 className="text-sm font-medium text-slate-900 mb-3">Local Heuristics Rules</h3>
+                   <p className="text-sm text-slate-500 mb-4">
+                     Define domain-to-category mappings for automatic categorization when LLM is unavailable or disabled.
+                   </p>
+                   
+                   <div className="space-y-3">
+                     {Object.entries(localHeuristics.domainCategoryRules).map(([domain, category]) => (
+                       <div key={domain} className="flex items-center gap-2">
+                         <input
+                           type="text"
+                           value={domain}
+                           onChange={(e) => handleDomainRuleChange(domain, e.target.value)}
+                           placeholder="domain.com"
+                           className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                         />
+                         <span className="text-slate-400">→</span>
+                         <input
+                           type="text"
+                           value={category}
+                           onChange={(e) => handleDomainRuleChange(domain, e.target.value)}
+                           placeholder="Category Name"
+                           className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                         />
+                         <button
+                           onClick={() => handleRemoveDomainRule(domain)}
+                           className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                           title="Remove rule"
+                         >
+                           <X size={16} />
+                         </button>
+                       </div>
+                     ))}
+                     
+                     <button
+                       onClick={handleAddDomainRule}
+                       className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600 rounded-lg font-medium transition-colors"
+                     >
+                       + Add Domain Rule
+                     </button>
+                   </div>
+
+                   <div className="mt-6 p-4 bg-slate-50 rounded-lg">
+                     <h4 className="text-sm font-medium text-slate-800 mb-2">Existing Categories</h4>
+                     <p className="text-xs text-slate-500 mb-3">
+                       Make sure these match categories in your database exactly:
+                     </p>
+                     <div className="flex flex-wrap gap-2">
+                       {['Articles', 'Design', 'Programming', 'Videos'].map(cat => (
+                         <span key={cat} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600">
+                           {cat}
+                         </span>
+                       ))}
+                     </div>
+                   </div>
+                 </div>
+                 
+                 <button
+                   onClick={handleSaveSettings}
+                   disabled={isSaving}
+                   className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+                 >
+                   {isSaving ? "Saving..." : "Save Settings"}
+                 </button>
+               </div>
+             )}
 
             {activeTab === "backup" && (
               <div className="space-y-6">

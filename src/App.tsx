@@ -84,14 +84,16 @@ export default function App() {
   const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
 
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error' | 'info'} | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void;
-  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+   const [confirmDialog, setConfirmDialog] = useState<{
+     isOpen: boolean;
+     title: string;
+     message: string;
+     onConfirm: () => void;
+   }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
 
-  const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc">("date_desc");
+   const [isCategorizing, setIsCategorizing] = useState(false);
+
+   const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc">("date_desc");
   const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
 
   useEffect(() => {
@@ -417,6 +419,33 @@ export default function App() {
     });
   };
 
+  const handleCategorizeAll = async () => {
+    if (isCategorizing) return;
+
+    setIsCategorizing(true);
+    try {
+      const res = await fetch("/api/bookmarks/categorize-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ onlyUntagged: true })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setToast({ message: `Categorized ${data.processed} of ${data.total} bookmarks`, type: 'success' });
+        // Refresh
+        fetchBookmarks();
+        fetchCategories();
+        fetchTags();
+      } else {
+        setToast({ message: data.error || "Failed to categorize bookmarks", type: 'error' });
+      }
+    } catch (e: any) {
+      setToast({ message: e.message || "Failed to categorize", type: 'error' });
+    } finally {
+      setIsCategorizing(false);
+    }
+  };
+
   const handleBulkRefresh = async () => {
     if (selectedBookmarkIds.size === 0) return;
     setConfirmDialog({
@@ -706,6 +735,25 @@ export default function App() {
               };
               return renderCategory(cat);
             })}
+          </div>
+
+          {/* Uncategorized */}
+          <div className="px-3 mb-4">
+            <div className="flex items-center justify-between px-2 mb-2">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Uncategorized
+              </div>
+              <span className="text-xs text-slate-400">
+                {bookmarks.filter(b => !b.category_id).length}
+              </span>
+            </div>
+            <button
+              onClick={handleCategorizeAll}
+              disabled={isCategorizing || bookmarks.filter(b => !b.category_id).length === 0}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
+            >
+              {isCategorizing ? "Categorizing..." : "Categorize All"}
+            </button>
           </div>
 
           {pinnedDomains.length > 0 && (

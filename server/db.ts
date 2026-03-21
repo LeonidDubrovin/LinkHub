@@ -71,23 +71,35 @@ db.exec(`
     FOREIGN KEY (tag_id) REFERENCES tags(id)
   );
 
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-`);
-
-// Migrations for existing databases
-try {
-  db.exec("ALTER TABLE categories ADD COLUMN parent_id TEXT REFERENCES categories(id)");
-} catch (e) { /* ignore if exists */ }
-
-try {
-  db.exec("ALTER TABLE bookmarks ADD COLUMN domain TEXT");
-} catch (e) { /* ignore if exists */ }
-
-try {
-  const allBookmarks = db.prepare("SELECT id, url FROM bookmarks WHERE domain IS NULL").all() as any[];
+   CREATE TABLE IF NOT EXISTS settings (
+     key TEXT PRIMARY KEY,
+     value TEXT NOT NULL
+   );
+ `);
+ 
+ // Migrations for existing databases
+ try {
+   db.exec("ALTER TABLE categories ADD COLUMN parent_id TEXT REFERENCES categories(id)");
+ } catch (e) { /* ignore if exists */ }
+ 
+ try {
+   db.exec("ALTER TABLE bookmarks ADD COLUMN domain TEXT");
+ } catch (e) { /* ignore if exists */ }
+ 
+ try {
+   db.exec("ALTER TABLE bookmarks ADD COLUMN images_json TEXT");
+ } catch (e) { /* ignore if exists */ }
+ 
+ try {
+   db.exec("ALTER TABLE bookmarks ADD COLUMN categorization_at DATETIME");
+ } catch (e) { /* ignore if exists */ }
+ 
+ try {
+   db.exec("ALTER TABLE bookmarks ADD COLUMN categorization_source TEXT");
+ } catch (e) { /* ignore if exists */ }
+ 
+ try {
+   const allBookmarks = db.prepare("SELECT id, url FROM bookmarks WHERE domain IS NULL").all() as any[];
   const updateDomain = db.prepare("UPDATE bookmarks SET domain = ? WHERE id = ?");
   for (const b of allBookmarks) {
     try {

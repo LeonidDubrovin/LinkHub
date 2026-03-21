@@ -5,28 +5,45 @@ import { Readability } from "@mozilla/readability";
 import db, { getDataDir } from "../db.js";
 import { fetchBookmarkData } from "../services/scraper.js";
 import { getConfig, saveConfig } from "../config.js";
+import { CategorizationService } from "../services/categorizer.js";
 import fs from "fs";
 import path from "path";
 
 import { categorizeWithAI } from "../services/ai.js";
 
 const router = express.Router();
+const categorizer = new CategorizationService();
 
 router.get("/settings", (req, res) => {
   const config = getConfig();
   res.json({
     dataDir: getDataDir(),
     userAgent: config.userAgent || "Mozilla/5.0 (compatible; Twitterbot/1.0)",
-    llmProvider: config.llmProvider || "gemini",
-    llmApiKey: config.llmApiKey || "",
-    llmModel: config.llmModel || "gemini-3-flash-preview",
-    llmEndpoint: config.llmEndpoint || ""
+    llm: {
+      enabled: config.llm?.enabled ?? false,
+      provider: config.llm?.provider ?? 'openrouter',
+      apiKey: config.llm?.apiKey ?? '',
+      model: config.llm?.model ?? 'stepfun/step-3.5-flash:free',
+      autoCategorizeOnAdd: config.llm?.autoCategorizeOnAdd ?? true,
+      fallbackToLocal: config.llm?.fallbackToLocal ?? true
+    },
+    localHeuristics: {
+      enabled: config.localHeuristics?.enabled ?? true,
+      domainCategoryRules: config.localHeuristics?.domainCategoryRules ?? {
+        "youtube.com": "Videos",
+        "youtu.be": "Videos",
+        "github.com": "Programming",
+        "npmjs.com": "Programming",
+        "dribbble.com": "Design",
+        "behance.com": "Design"
+      }
+    }
   });
 });
 
 router.post("/settings", (req, res) => {
   try {
-    let { dataDir, userAgent, llmProvider, llmApiKey, llmModel, llmEndpoint } = req.body;
+    let { dataDir, userAgent, llm, localHeuristics } = req.body;
     if (!dataDir) return res.status(400).json({ error: "dataDir is required" });
 
     // Resolve to absolute path
@@ -41,10 +58,8 @@ router.post("/settings", (req, res) => {
     const config = getConfig();
     config.dataDir = dataDir;
     if (userAgent !== undefined) config.userAgent = userAgent;
-    if (llmProvider !== undefined) config.llmProvider = llmProvider;
-    if (llmApiKey !== undefined) config.llmApiKey = llmApiKey;
-    if (llmModel !== undefined) config.llmModel = llmModel;
-    if (llmEndpoint !== undefined) config.llmEndpoint = llmEndpoint;
+    if (llm !== undefined) config.llm = llm;
+    if (localHeuristics !== undefined) config.localHeuristics = localHeuristics;
     saveConfig(config);
 
     // Note: To fully apply this, the app needs to be restarted.
@@ -59,6 +74,78 @@ router.post("/settings", (req, res) => {
     res.json({ success: true, message: "Settings saved. Please restart the application to fully apply changes." });
   } catch (error: any) {
     console.error("Failed to save settings:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// LLM Test Connection
+router.post("/llm/test-connection", async (req, res) => {
+  try {
+    const { provider, apiKey, model } = req.body;
+    
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: "API key required" });
+    }
+
+    if (provider === 'openrouter') {
+      // Test OpenRouter connection by fetching models
+      const response = await fetch("https://openrouter.ai/api/v1/models", {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`
+        }
+      });
+
+      if (response.ok) {
+        res.json({ success: true, message: "Connected to OpenRouter successfully" });
+      } else {
+        const error = await response.text();
+        res.status(400).json({ success: false, error: `OpenRouter error: ${error}` });
+      }
+    } else {
+      res.status(400).json({ success: false, error: `Unsupported provider: ${provider}` });
+    }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Categorization stats
+router.get("/categorization/stats", (req, res) => {
+  try {
+    const stats = categorizer.getStats();
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Categorize a single bookmark
+router.post("/bookmarks/:id/categorize", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { force } = req.body;
+    
+    const result = await categorizer.categorizeBookmark(id, force ?? false);
+    
+    if (result.success) {
+      // Return updated bookmark
+      const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(id) as any;
+      res.json({ success: true, bookmark });
+    } else {
+      res.status(400).json({ success: false, error: result.error });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Categorize all uncategorized bookmarks
+router.post("/bookmarks/categorize-all", async (req, res) => {
+  try {
+    const { onlyUntagged = true } = req.body;
+    const result = await categorizer.categorizeAll(onlyUntagged);
+    res.json(result);
+  } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
