@@ -7,66 +7,91 @@ export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Boo
   const [validImages, setValidImages] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let images: string[] = [];
-    try {
-      if (bookmark.images_json) {
-        images = JSON.parse(bookmark.images_json);
-      }
-    } catch (e) {}
+   useEffect(() => {
+     let images: string[] = [];
+     try {
+       if (bookmark.images_json) {
+         images = JSON.parse(bookmark.images_json);
+       }
+     } catch (e) {}
 
-    if (images.length === 0 && bookmark.cover_image_url) {
-      images = [bookmark.cover_image_url];
-    }
+     if (images.length === 0 && bookmark.cover_image_url) {
+       images = [bookmark.cover_image_url];
+     }
 
-    if (images.length <= 1) {
-      setValidImages(images);
-      return;
-    }
+     if (images.length <= 1) {
+       setValidImages(images);
+       return;
+     }
 
-    let isMounted = true;
-    
-    // Always keep the first image (usually cover_image_url or og:image)
-    const valid = [images[0]];
-    setValidImages(valid);
+     let isMounted = true;
+     
+     // Always keep the first image (usually cover_image_url or og:image)
+     const valid = [images[0]];
+     setValidImages(valid);
 
-    const checkImages = async () => {
-      const promises = images.slice(1).map(async (src) => {
-        try {
-          const img = new Image();
-          img.referrerPolicy = "no-referrer";
-          
-          const loadPromise = new Promise((resolve, reject) => {
-            img.onload = () => resolve(img);
-            img.onerror = reject;
-          });
-          
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000));
-          
-          img.src = src;
-          await Promise.race([loadPromise, timeoutPromise]);
-          
-          if (img.naturalWidth >= 100 && img.naturalHeight >= 100) {
-            return src;
-          }
-        } catch (e) {}
-        return null;
-      });
-      
-      const results = await Promise.all(promises);
-      const validResults = results.filter(Boolean) as string[];
-      
-      if (isMounted && validResults.length > 0) {
-        setValidImages([...valid, ...validResults]);
-      }
-    };
-    
-    checkImages();
-    
-    return () => {
-      isMounted = false;
-    };
-  }, [bookmark.images_json, bookmark.cover_image_url]);
+     const checkImages = async () => {
+       const promises = images.slice(1).map(async (src) => {
+         // Skip data URLs that are too large or invalid
+         if (typeof src !== 'string' || src.length === 0) {
+           return null;
+         }
+
+         // Skip data URLs that look like placeholders or are very small
+         if (src.startsWith('data:image')) {
+           try {
+             const match = src.match(/^data:image\/(\w+);base64,(.+)$/);
+             if (!match) return null;
+             const base64Data = match[2];
+             // If base64 is too small, it's likely a placeholder (1x1 pixel)
+             if (base64Data.length < 500) return null;
+           } catch {
+             return null;
+           }
+         }
+
+         try {
+           const img = new Image();
+           img.referrerPolicy = "no-referrer";
+           
+           const loadPromise = new Promise<boolean>((resolve, reject) => {
+             img.onload = () => resolve(true);
+             img.onerror = () => reject(new Error('load error'));
+           });
+
+           const timeoutPromise = new Promise<boolean>((_, reject) => 
+             setTimeout(() => reject(new Error('timeout')), 3000)
+           );
+
+           img.src = src;
+           await Promise.race([loadPromise, timeoutPromise]);
+           
+           if (img.naturalWidth >= 100 && img.naturalHeight >= 100) {
+             return src;
+           }
+         } catch (e) {
+           // Silently ignore image load errors
+         }
+         return null;
+       });
+       
+       const results = await Promise.all(promises);
+       const validResults = results.filter((r): r is string => r !== null);
+       
+       if (isMounted && validResults.length > 0) {
+         setValidImages([...valid, ...validResults]);
+       } else if (isMounted && valid.length > 0) {
+         // Only first image is valid
+         setValidImages(valid);
+       }
+     };
+     
+     checkImages();
+     
+     return () => {
+       isMounted = false;
+     };
+   }, [bookmark.images_json, bookmark.cover_image_url]);
 
   const imagesToUse = validImages.length > 0 ? validImages : (bookmark.cover_image_url ? [bookmark.cover_image_url] : []);
 
