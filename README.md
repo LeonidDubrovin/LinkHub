@@ -1,70 +1,273 @@
 # LinkHub
 
-LinkHub is a smart bookmark manager that uses AI to automatically categorize your saved links, generate descriptions, and extract content for a clean reading experience.
+<img src="public/icon.png" alt="LinkHub Icon" width="128" height="128" />
+
+**Smart bookmark manager with AI-powered categorization.**
+
+LinkHub helps you save, organize, and preview web links. It uses AI to automatically categorize your bookmarks, generate tags, and extract content for a clean reading experience. Built with Electron, React, and SQLite.
+
+[Features](#features) • [Quick Start](#quick-start) • [Documentation](docs/README.md) • [License](#license)
+
+---
 
 ## Features
 
-- **AI Categorization**: Automatically categorizes links using Gemini AI.
-- **Smart Tags**: Generates relevant tags for each bookmark.
-- **Reader View**: Extracts the main content of articles for distraction-free reading.
-- **Search & Filter**: Find your bookmarks easily by title, description, URL, domain, or content type.
-- **Bulk Actions**: Delete or refresh multiple bookmarks at once.
+- 🤖 **AI-Powered Categorization** — Automatically sort bookmarks using OpenRouter (multiple free & low-cost models)
+- 🔄 **Local Fallback** — Domain-based rules work even without internet
+- 📖 **Reader View** — Extract article content for distraction-free reading
+- 🔍 **Search & Filter** — Find bookmarks by title, URL, domain, category, or tags
+- 📁 **Bulk Actions** — Delete, refresh, and categorize multiple bookmarks at once
+- 🖥️ **Desktop App** — Native Windows .exe with portable mode
+- 📊 **Smart Previews** — Hover to cycle through page images, fallback to favicon
 
-## Getting Started
+---
+
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 20 or higher
-- A Gemini API Key
+- **Node.js 20+** — [Download](https://nodejs.org/)
+- **OpenRouter API Key** (optional, for AI) — [Get key](https://openrouter.ai/keys)
 
 ### Installation
 
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Copy `.env.example` to `.env` and add your Gemini API Key:
-   ```env
-   GEMINI_API_KEY=your_api_key_here
-   ```
-4. Start the development server:
-   ```bash
-   npm run dev
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/linkhub.git
+cd linkhub
 
-## Windows 10 Release & Data Storage
+# Install dependencies
+npm install
 
-### Where is the data stored on Windows?
-
-When running in **production mode** (e.g., using the release build), the application data (including the `bookmarks.db` SQLite database) is stored in your user's `AppData` folder:
-
-```
-C:\Users\<YourUsername>\AppData\Roaming\LinkHub\bookmarks.db
+# Start development server (Electron app)
+npm run dev:electron
 ```
 
-*(If you run the app in development mode using `npm run dev`, the database is stored locally in the project folder as `bookmarks.db`)*.
+That's it! The app will open in a new window. The database (`data/bookmarks.db`) is created automatically.
 
-### How to make a standalone .exe for Windows
+### First Run
 
-This project uses **Electron** to package the entire application (Node.js server, React frontend, and SQLite database) into a single, standalone `.exe` file.
+1. **Open Settings** (gear icon in sidebar)
+2. (Optional) Configure AI:
+   - Go to **AI & LLM** tab
+   - Enter your OpenRouter API key
+   - Select a model (e.g., `stepfun/step-3.5-flash:free`)
+   - Click **Test Connection**
+   - Enable **"Enable LLM categorization"** and **"Auto-categorize on add"**
+3. (Optional) Configure **Local Heuristics** (domain → category rules) in the Local Heuristics tab
+4. Close Settings — your configuration is saved automatically
 
-1. **Create a Release Tag**: Push a new tag starting with `v` to your GitHub repository (e.g., `v1.0.0`).
-   ```bash
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-2. **GitHub Actions**: The `Build Electron App` workflow will automatically start.
-3. **Download**: Once the workflow finishes, a new Release will be created on your GitHub repository containing the `LinkHub Setup.exe` installer.
-4. **Run**: Download and install the application. It will run as a native desktop app.
+---
 
-Alternatively, you can manually trigger the build from the **Actions** tab in your GitHub repository by clicking "Run workflow".
+## Usage
 
-### Manual Local Build
+### Adding Bookmarks
 
-If you want to build the `.exe` on your own Windows machine:
+- **Paste URLs** — Click "+" button, paste multiple URLs (one per line)
+- **Drag & Drop** — Drag text/URLs onto the app
+- **Browser Extension** — (coming soon)
 
-1. Ensure you have Node.js installed.
-2. Run `npm install`
-3. Run `npm run build:electron`
-4. The installer will be generated in the `release/` folder.
+### Categorization
+
+- **Automatic** — If AI is enabled and `autoCategorizeOnAdd` is on, bookmarks are categorized in the background
+- **Manual Bulk** — Click **"Categorize All"** in the **Uncategorized** section of the sidebar
+- **Single** — Use the API or wait for auto-categorization
+
+### Managing Categories
+
+- **View** — Categories shown in sidebar with icons and colors
+- **Nested** — Supports parent/child categories (created by AI)
+- **Create** — New categories are auto-created when AI suggests them
+- **Filter** — Click a category to see its bookmarks (includes subcategories recursively)
+
+### Tags
+
+- Auto-generated by AI or manual (future UI)
+- View tags on bookmark cards and in inspector
+- Filter by tag (coming soon)
+
+### Reader View
+
+- Click the **book** icon on any bookmark to open clean reader mode
+- Extracts main article content using Mozilla Readability
+- Works best with article-style pages
+
+---
+
+## Data Storage
+
+### Development Mode (`npm run dev`)
+
+- Database: `./data/bookmarks.db`
+- Config: `./linkhub.config.json`
+
+### Production (Electron .exe)
+
+- Data stored in Windows `AppData/Roaming/LinkHub/`
+- See [docs/FAQ.md](docs/FAQ.md) for details
+
+### Backup
+
+Use **Settings → Backup & Restore** to export/import your data as JSON.
+
+---
+
+## Architecture
+
+LinkHub consists of:
+
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
+- **Backend**: Node.js + Express
+- **Desktop**: Electron (packaged as .exe)
+- **Database**: SQLite (better-sqlite3)
+- **AI**: OpenRouter API (Strategy pattern for future providers)
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design.
+
+---
+
+## Configuration
+
+Configuration is stored in `linkhub.config.json` (auto-created on first run).
+
+Key options:
+
+```json
+{
+  "llm": {
+    "enabled": false,
+    "apiKey": "sk-or-...",
+    "model": "stepfun/step-3.5-flash:free",
+    "autoCategorizeOnAdd": true,
+    "fallbackToLocal": true
+  },
+  "localHeuristics": {
+    "domainCategoryRules": {
+      "youtube.com": "Videos",
+      "github.com": "Programming"
+    }
+  }
+}
+```
+
+Full reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+---
+
+## API
+
+LinkHub provides a REST API (used by frontend):
+
+- `GET /api/bookmarks` — List with filters
+- `POST /api/bookmarks` — Create
+- `POST /api/bookmarks/:id/refresh` — Re-fetch metadata
+- `POST /api/bookmarks/:id/categorize` — AI categorize single
+- `POST /api/bookmarks/categorize-all` — Bulk categorize
+- `GET /api/categories` — List categories
+- `GET /api/tags` — List tags
+- `GET /api/settings` / `POST /api/settings` — Configuration
+- `POST /api/llm/test-connection` — Test AI connection
+
+Full API docs: [docs/API.md](docs/API.md)
+
+---
+
+## Building for Production
+
+### Using GitHub Actions (Recommended)
+
+1. Create a release tag: `git tag v1.0.0 && git push origin v1.0.0`
+2. The **Build Electron App** workflow runs automatically
+3. Download `LinkHub Setup.exe` from Releases
+
+### Manual Build
+
+```bash
+npm run build:electron
+# Installer in release/ folder
+```
+
+---
+
+## Common Issues
+
+### "Port 3000 already in use"
+
+Another instance is running. Kill all `node.exe` and `electron.exe` processes and retry.
+
+### Database not found
+
+Check `dataDir` in settings. In dev mode it's `./data/`. In production it's `%APPDATA%/LinkHub/`.
+
+### LLM not categorizing
+
+- Verify API key is correct in Settings → AI & LLM
+- Check `llm.enabled` is true
+- Look at console/terminal for errors
+- Test connection via the button
+
+### Categories not appearing
+
+After creating a new category (via AI or rule), refresh the sidebar. Categories are cached until next reload.
+
+---
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Lint TypeScript
+npm run lint
+
+# Build frontend
+npm run build
+
+# Start server only
+npm run dev
+
+# Start Electron app (spawns server automatically)
+npm run dev:electron
+
+# Package for Windows
+npm run build:electron
+```
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for contribution guidelines (if available).
+
+---
+
+## Roadmap
+
+- [ ] Browser extension for quick bookmarking
+- [ ] Cloud sync (self-hosted)
+- [ ] Advanced search (full-text, boolean)
+- [ ] Custom category icons (emoji picker)
+- [ ] Export to HTML/JSON
+- [ ] Tag management UI
+- [ ] Duplicate detection
+- [ ] Scheduled refresh of bookmark metadata
+- [ ] Multi-select and bulk tag operations
+
+---
+
+## License
+
+MIT © [Your Name]
+
+---
+
+## Acknowledgements
+
+- [OpenRouter](https://openrouter.ai) — AI model aggregation
+- [Electron](https://electronjs.org/) — Desktop framework
+- [React](https://reactjs.org/) — UI library
+- [Vite](https://vitejs.dev/) — Build tool
+- [Tailwind CSS](https://tailwindcss.com/) — Styling
+- [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — SQLite driver
+- [Mozilla Readability](https://github.com/mozilla/readability) — Article extraction
+
+---
+
+**Made with ❤️ by LinkHub Team**
