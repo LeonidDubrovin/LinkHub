@@ -202,20 +202,24 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
    }
  });
 
- router.delete("/spaces/:id", (req, res) => {
-   try {
-     const { id } = req.params;
-     // Delete space cascades to collections (via FK) but bookmarks remain
-     const deleteSpace = db.prepare("DELETE FROM spaces WHERE id = ?");
-     const result = deleteSpace.run(id);
-     if (result.changes === 0) {
-       return res.status(404).json({ error: "Space not found" });
-     }
-     res.json({ success: true });
-   } catch (error: any) {
-     res.status(500).json({ error: error.message });
-   }
- });
+  router.delete("/spaces/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      // Prevent deletion of system Inbox space
+      if (id === 'inbox-space') {
+        return res.status(403).json({ error: "Cannot delete system Inbox space" });
+      }
+      // Delete space cascades to collections (via FK) but bookmarks remain
+      const deleteSpace = db.prepare("DELETE FROM spaces WHERE id = ?");
+      const result = deleteSpace.run(id);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "Space not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
  // ============ COLLECTIONS ============
 
@@ -279,22 +283,28 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
    }
  });
 
- router.delete("/collections/:id", (req, res) => {
-   try {
-     const { id } = req.params;
-     // First unlink all bookmarks from this collection
-     db.prepare("DELETE FROM bookmark_collections WHERE collection_id = ?").run(id);
-     // Then delete the collection
-     const deleteColl = db.prepare("DELETE FROM collections WHERE id = ?");
-     const result = deleteColl.run(id);
-     if (result.changes === 0) {
-       return res.status(404).json({ error: "Collection not found" });
-     }
-     res.json({ success: true });
-   } catch (error: any) {
-     res.status(500).json({ error: error.message });
-   }
- });
+  router.delete("/collections/:id", (req, res) => {
+    try {
+      const { id } = req.params;
+      // Prevent deletion of system collections
+      if (id === 'inbox-collection') {
+        return res.status(403).json({ error: "Cannot delete system Inbox collection" });
+      }
+      // First, re-parent any child collections to root (set parent_id = NULL)
+      db.prepare("UPDATE collections SET parent_id = NULL WHERE parent_id = ?").run(id);
+      // Then unlink all bookmarks from this collection
+      db.prepare("DELETE FROM bookmark_collections WHERE collection_id = ?").run(id);
+      // Then delete the collection
+      const deleteColl = db.prepare("DELETE FROM collections WHERE id = ?");
+      const result = deleteColl.run(id);
+      if (result.changes === 0) {
+        return res.status(404).json({ error: "Collection not found" });
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
  // ============ BOOKMARK-COLLECTION ASSOCIATIONS ============
 
@@ -313,20 +323,23 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
    }
  });
 
- router.post("/bookmarks/:id/collections", (req, res) => {
-   try {
-     const { id } = req.params;
-     const { collectionIds } = req.body;
-     if (!Array.isArray(collectionIds) || collectionIds.length === 0) {
-       return res.status(400).json({ error: "collectionIds array is required" });
-     }
+  router.post("/bookmarks/:id/collections", (req, res) => {
+    try {
+      const { id } = req.params;
+      const { collectionIds } = req.body;
+      if (!Array.isArray(collectionIds)) {
+        return res.status(400).json({ error: "collectionIds array is required" });
+      }
+      // Allow empty array to remove all collections
 
-     // Validate collections exist
-     const placeholders = collectionIds.map(() => '?').join(',');
-     const existing = db.prepare(`SELECT id FROM collections WHERE id IN (${placeholders})`).all(...collectionIds) as any[];
-     if (existing.length !== collectionIds.length) {
-       return res.status(400).json({ error: "One or more collections not found" });
-     }
+      // Validate collections exist (skip if empty array)
+      if (collectionIds.length > 0) {
+        const placeholders = collectionIds.map(() => '?').join(',');
+        const existing = db.prepare(`SELECT id FROM collections WHERE id IN (${placeholders})`).all(...collectionIds) as any[];
+        if (existing.length !== collectionIds.length) {
+          return res.status(400).json({ error: "One or more collections not found" });
+        }
+      }
 
      // Replace all existing links with new ones
      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);

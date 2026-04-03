@@ -104,7 +104,6 @@ export default function App() {
    // Collection creation state
    const [isCreatingCollection, setIsCreatingCollection] = useState(false);
    const [newCollectionName, setNewCollectionName] = useState("");
-   const [newCollectionSpaceId, setNewCollectionSpaceId] = useState<string>(spaces.find(s => s.name === 'Library')?.id || (spaces.length > 0 ? spaces[0].id : ''));
 
   useEffect(() => {
     localStorage.setItem('viewMode', viewMode);
@@ -473,13 +472,10 @@ export default function App() {
         return;
       }
       try {
-        // Determine space: use Library if available, else first space
-        let spaceId = newCollectionSpaceId;
-        if (!spaceId) {
-          const libSpace = spaces.find(s => s.name === 'Library');
-          spaceId = libSpace?.id || (spaces[0]?.id || null);
-        }
-        if (!spaceId) {
+        // Determine target space: Library preferred, else first available
+        const libSpace = spaces.find(s => s.name === 'Library');
+        const targetSpaceId = libSpace?.id || spaces[0]?.id || null;
+        if (!targetSpaceId) {
           setToast({ message: "No space available", type: "error" });
           return;
         }
@@ -488,7 +484,7 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: newCollectionName.trim(),
-            space_id: spaceId,
+            space_id: targetSpaceId,
             icon: "Folder",
             color: null,
             parent_id: null
@@ -534,24 +530,28 @@ export default function App() {
        }
      };
 
-  const handleDeleteCollection = async (collectionId: string) => {
-    if (!confirm("Delete this collection? Bookmarks will remain but will be unlinked from this collection.")) {
-      return;
-    }
-    try {
-      const res = await fetch(`/api/collections/${collectionId}`, { method: "DELETE" });
-      if (res.ok) {
-        fetchCollections();
-        fetchBookmarks();
-        setToast({ message: "Collection deleted", type: "success" });
-      } else {
-        setToast({ message: "Failed to delete collection", type: "error" });
-      }
-    } catch (error) {
-      console.error("Delete collection error:", error);
-      setToast({ message: "Failed to delete collection", type: "error" });
-    }
-  };
+   const handleDeleteCollection = async (collectionId: string) => {
+     if (!confirm("Delete this collection? Bookmarks will remain but will be unlinked from this collection.")) {
+       return;
+     }
+     try {
+       const res = await fetch(`/api/collections/${collectionId}`, { method: "DELETE" });
+       if (res.ok) {
+         // If the deleted collection was selected, clear selection
+         if (selectedCollectionId === collectionId) {
+           setSelectedCollectionId(null);
+         }
+         fetchCollections();
+         fetchBookmarks();
+         setToast({ message: "Collection deleted", type: "success" });
+       } else {
+         setToast({ message: "Failed to delete collection", type: "error" });
+       }
+     } catch (error) {
+       console.error("Delete collection error:", error);
+       setToast({ message: "Failed to delete collection", type: "error" });
+     }
+   };
 
   const handleDeleteBookmark = async (id: string) => {
     setConfirmDialog({
