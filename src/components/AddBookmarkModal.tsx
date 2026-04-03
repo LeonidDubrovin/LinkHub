@@ -23,6 +23,44 @@ export function AddBookmarkModal({
   const [newUrls, setNewUrls] = useState("");
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>(defaultCollectionIds);
 
+  // Build tree from flat collections list
+  const buildCollectionTree = (items: Collection[], parentId: string | null = null): Collection[] => {
+    return items
+      .filter(item => item.parent_id === parentId)
+      .map(item => ({
+        ...item,
+        children: buildCollectionTree(items, item.id)
+      }));
+  };
+
+  const treeCollections = React.useMemo(() => buildCollectionTree(collections), [collections]);
+
+  const renderCollectionNode = (coll: Collection, level: number) => (
+    <div key={coll.id} style={{ paddingLeft: `${level * 12}px` }}>
+      <label className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+        <input
+          type="checkbox"
+          checked={selectedCollectionIds.includes(coll.id)}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedCollectionIds(prev => [...prev, coll.id]);
+            } else {
+              setSelectedCollectionIds(prev => prev.filter(id => id !== coll.id));
+            }
+          }}
+          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+        />
+        <Icon name={coll.icon || "Folder"} size={14} color={coll.color} />
+        <span className="truncate">{coll.name}</span>
+      </label>
+      {coll.children && coll.children.length > 0 && (
+        <div>
+          {coll.children.map(child => renderCollectionNode(child, level + 1))}
+        </div>
+      )}
+    </div>
+  );
+
   useEffect(() => {
     if (isOpen) {
       setNewUrls("");
@@ -88,25 +126,12 @@ export function AddBookmarkModal({
             <label className="block text-sm font-medium text-slate-700 mb-1">
               Collections
             </label>
-            <div className="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
-              {collections.filter(c => !c.parent_id).map(c => (
-                <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedCollectionIds.includes(c.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedCollectionIds(prev => [...prev, c.id]);
-                      } else {
-                        setSelectedCollectionIds(prev => prev.filter(id => id !== c.id));
-                      }
-                    }}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <Icon name={c.icon || "Folder"} size={14} color={c.color} />
-                  <span className="truncate">{c.name}</span>
-                </label>
-              ))}
+            <div className="space-y-1 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
+              {treeCollections.length === 0 ? (
+                <div className="text-xs text-slate-400 px-2">No collections</div>
+              ) : (
+                treeCollections.map(coll => renderCollectionNode(coll, 0))
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-2">
               If none selected, bookmark will be added to Inbox.

@@ -101,6 +101,11 @@ export default function App() {
    const [isEditingCollections, setIsEditingCollections] = useState(false);
    const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
 
+   // Collection creation state
+   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
+   const [newCollectionName, setNewCollectionName] = useState("");
+   const [newCollectionSpaceId, setNewCollectionSpaceId] = useState<string>(spaces.find(s => s.name === 'Library')?.id || (spaces.length > 0 ? spaces[0].id : ''));
+
   useEffect(() => {
     localStorage.setItem('viewMode', viewMode);
   }, [viewMode]);
@@ -234,9 +239,22 @@ export default function App() {
      }));
    }, [spaces, collections]);
 
+   // Build flat tree of all collections (for editing)
+   const allCollectionsTree = React.useMemo(() => {
+     const buildTree = (items: Collection[], parentId: string | null = null): Collection[] => {
+       return items
+         .filter(item => item.parent_id === parentId)
+         .map(item => ({
+           ...item,
+           children: buildTree(items, item.id)
+         }));
+     };
+     return buildTree(collections);
+   }, [collections]);
+
    const renderCollections = (colls: Collection[], level: number) => {
      return colls.map(coll => (
-       <div key={coll.id}>
+       <div key={coll.id} className="group relative">
          <button
            onClick={() => {
              setSelectedCollectionId(coll.id);
@@ -244,7 +262,7 @@ export default function App() {
              setSelectedDomain(null);
            }}
            className={cn(
-             "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5",
+             "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm mb-0.5",
              selectedCollectionId === coll.id
                ? "bg-blue-100 text-blue-700 font-medium"
                : "hover:bg-slate-200 text-slate-700"
@@ -257,10 +275,47 @@ export default function App() {
              <span className="text-xs text-slate-400">{coll.bookmarkCount}</span>
            )}
          </button>
+         {/* Delete button (visible on hover) */}
+         <button
+           onClick={(e) => {
+             e.stopPropagation();
+             handleDeleteCollection(coll.id);
+           }}
+           className="absolute right-1 top-1/2 -translate-y-1/2 p-1 opacity-0 group-hover:opacity-100 hover:text-red-500 text-slate-400"
+           title="Delete collection"
+         >
+           <Trash2 size={12} />
+         </button>
          {coll.children && coll.children.length > 0 && renderCollections(coll.children, level + 1)}
        </div>
      ));
    };
+
+   const renderCollectionCheckbox = (coll: Collection, level: number) => (
+    <div key={coll.id} style={{ paddingLeft: `${level * 12}px` }}>
+      <label className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+        <input
+          type="checkbox"
+          checked={selectedCollectionIdsForEdit.includes(coll.id)}
+          onChange={(e) => {
+            if (e.target.checked) {
+              setSelectedCollectionIdsForEdit(prev => [...prev, coll.id]);
+            } else {
+              setSelectedCollectionIdsForEdit(prev => prev.filter(id => id !== coll.id));
+            }
+          }}
+          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+        />
+        <Icon name={coll.icon || "Folder"} size={14} color={coll.color} />
+        <span className="truncate">{coll.name}</span>
+      </label>
+      {coll.children && coll.children.length > 0 && (
+        <div>
+          {coll.children.map(child => renderCollectionCheckbox(child, level + 1))}
+        </div>
+      )}
+    </div>
+  );
 
    const togglePinDomain = (domain: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -412,7 +467,47 @@ export default function App() {
     }
   };
 
-  const handleUpdateBookmarkCollections = async (bookmarkId: string, collectionIds: string[]) => {
+    const handleCreateCollection = async () => {
+      if (!newCollectionName.trim()) {
+        setToast({ message: "Please enter a name", type: "error" });
+        return;
+      }
+      try {
+        // Determine space: use Library if available, else first space
+        let spaceId = newCollectionSpaceId;
+        if (!spaceId) {
+          const libSpace = spaces.find(s => s.name === 'Library');
+          spaceId = libSpace?.id || (spaces[0]?.id || null);
+        }
+        if (!spaceId) {
+          setToast({ message: "No space available", type: "error" });
+          return;
+        }
+        const res = await fetch("/api/collections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: newCollectionName.trim(),
+            space_id: spaceId,
+            icon: "Folder",
+            color: null,
+            parent_id: null
+          })
+        });
+        if (res.ok) {
+          setNewCollectionName("");
+          setIsCreatingCollection(false);
+          fetchCollections();
+          setToast({ message: "Collection created", type: "success" });
+        } else {
+          setToast({ message: "Failed to create collection", type: "error" });
+        }
+      } catch (error: any) {
+        setToast({ message: error.message || "Failed to create collection", type: "error" });
+      }
+    };
+
+    const handleUpdateBookmarkCollections = async (bookmarkId: string, collectionIds: string[]) => {
     try {
       const res = await fetch(`/api/bookmarks/${bookmarkId}/collections`, {
         method: "POST",
@@ -433,9 +528,28 @@ export default function App() {
       } else {
         setToast({ message: "Failed to update collections", type: "error" });
       }
+     } catch (error) {
+       console.error("Update collections error:", error);
+       setToast({ message: "Failed to update collections", type: "error" });
+       }
+     };
+
+  const handleDeleteCollection = async (collectionId: string) => {
+    if (!confirm("Delete this collection? Bookmarks will remain but will be unlinked from this collection.")) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/collections/${collectionId}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchCollections();
+        fetchBookmarks();
+        setToast({ message: "Collection deleted", type: "success" });
+      } else {
+        setToast({ message: "Failed to delete collection", type: "error" });
+      }
     } catch (error) {
-      console.error("Update collections error:", error);
-      setToast({ message: "Failed to update collections", type: "error" });
+      console.error("Delete collection error:", error);
+      setToast({ message: "Failed to delete collection", type: "error" });
     }
   };
 
@@ -806,23 +920,51 @@ export default function App() {
           </div>
 
           {/* Spaces & Collections Tree */}
-          <div className="px-3 mb-4">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-              Collections
-            </div>
-            {treeSpaces.length === 0 ? (
-              <div className="text-xs text-slate-400 px-2">No collections</div>
-            ) : (
-              treeSpaces.map(space => (
-                <div key={space.id} className="mb-2">
-                  <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
-                    {space.name}
-                  </div>
-                  {space.collections && renderCollections(space.collections, 0)}
-                </div>
-              ))
-            )}
-          </div>
+           <div className="px-3 mb-4">
+             <div className="flex items-center justify-between">
+               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">
+                 Collections
+               </div>
+               <button
+                 onClick={() => setIsCreatingCollection(true)}
+                 className="text-xs text-blue-600 hover:underline px-2"
+               >
+                 + New
+               </button>
+             </div>
+             {isCreatingCollection && (
+               <div className="mb-2 px-2">
+                 <input
+                   autoFocus
+                   type="text"
+                   value={newCollectionName}
+                   onChange={(e) => setNewCollectionName(e.target.value)}
+                   placeholder="Collection name"
+                   className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
+                   onKeyDown={(e) => {
+                     if (e.key === 'Enter') {
+                       handleCreateCollection();
+                     } else if (e.key === 'Escape') {
+                       setIsCreatingCollection(false);
+                       setNewCollectionName("");
+                     }
+                   }}
+                 />
+               </div>
+             )}
+             {treeSpaces.length === 0 ? (
+               <div className="text-xs text-slate-400 px-2">No collections</div>
+             ) : (
+               treeSpaces.map(space => (
+                 <div key={space.id} className="mb-2">
+                   <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
+                     {space.name}
+                   </div>
+                   {space.collections && renderCollections(space.collections, 0)}
+                 </div>
+               ))
+             )}
+           </div>
 
           {pinnedDomains.length > 0 && (
             <div className="px-3 mb-4">
@@ -1490,25 +1632,12 @@ export default function App() {
                       </button>
                     </div>
                     {isEditingCollections ? (
-                      <div className="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
-                        {collections.filter(c => !c.parent_id).map(coll => (
-                          <label key={coll.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={selectedCollectionIdsForEdit.includes(coll.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedCollectionIdsForEdit(prev => [...prev, coll.id]);
-                                } else {
-                                  setSelectedCollectionIdsForEdit(prev => prev.filter(id => id !== coll.id));
-                                }
-                              }}
-                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <Icon name={coll.icon || "Folder"} size={14} color={coll.color} />
-                            <span>{coll.name}</span>
-                          </label>
-                        ))}
+                      <div className="space-y-1 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
+                        {allCollectionsTree.length === 0 ? (
+                          <div className="text-xs text-slate-400 px-2">No collections</div>
+                        ) : (
+                          allCollectionsTree.map(coll => renderCollectionCheckbox(coll, 0))
+                        )}
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1">
