@@ -71,11 +71,42 @@ db.exec(`
     FOREIGN KEY (tag_id) REFERENCES tags(id)
   );
 
-   CREATE TABLE IF NOT EXISTS settings (
-     key TEXT PRIMARY KEY,
-     value TEXT NOT NULL
-   );
- `);
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  -- Spaces table
+  CREATE TABLE IF NOT EXISTS spaces (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT,
+    color TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  -- Collections table (replaces categories)
+  CREATE TABLE IF NOT EXISTS collections (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT,
+    color TEXT,
+    space_id TEXT NOT NULL,
+    parent_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES collections(id)
+  );
+
+  -- Bookmark ↔ Collection many-to-many
+  CREATE TABLE IF NOT EXISTS bookmark_collections (
+    bookmark_id TEXT,
+    collection_id TEXT,
+    PRIMARY KEY (bookmark_id, collection_id),
+    FOREIGN KEY (bookmark_id) REFERENCES bookmarks(id) ON DELETE CASCADE,
+    FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+  );
+  `);
  
  // Migrations for existing databases
  try {
@@ -119,15 +150,81 @@ const catCount = db
   .prepare("SELECT COUNT(*) as count FROM categories")
   .get() as { count: number };
 
-if (catCount.count === 0) {
-  const insertCat = db.prepare(
-    "INSERT INTO categories (id, name, icon, color) VALUES (?, ?, ?, ?)"
-  );
-  insertCat.run(uuidv4(), "Articles", "FileText", "#3b82f6");
-  insertCat.run(uuidv4(), "Videos", "Video", "#ef4444");
-  insertCat.run(uuidv4(), "Programming", "Code", "#10b981");
-  insertCat.run(uuidv4(), "Design", "Palette", "#ec4899");
-}
+ if (catCount.count === 0) {
+   const insertCat = db.prepare(
+     "INSERT INTO categories (id, name, icon, color) VALUES (?, ?, ?, ?)"
+   );
+   insertCat.run(uuidv4(), "Articles", "FileText", "#3b82f6");
+   insertCat.run(uuidv4(), "Videos", "Video", "#ef4444");
+   insertCat.run(uuidv4(), "Programming", "Code", "#10b981");
+   insertCat.run(uuidv4(), "Design", "Palette", "#ec4899");
+ }
 
-export const getDataDir = () => dataDir;
-export default db;
+ // Run spaces & collections migration (one-time, idempotent)
+ runSpacesMigration(db, uuidv4);
+
+ // Migration to Spaces & Collections model
+ function runSpacesMigration(db: Database, uuidv4: (options?: any) => string) {
+   try {
+     // Check if already migrated
+     const check = db.prepare("SELECT 1 FROM spaces WHERE id = 'inbox-space'").get();
+     if (check) {
+       console.log("Spaces migration already completed, skipping.");
+       return;
+     }
+
+     console.log("Running spaces & collections migration...");
+     db.transaction(() => {
+       // 1. Create Inbox space (system)
+       db.prepare("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
+         .run('inbox-space', 'Inbox', 'Inbox', '#6b7280');
+
+       // 2. Create Inbox collection in Inbox space
+       db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES (?, ?, ?, ?, ?)")
+         .run('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space');
+
+       // 3. Create "Library" space for migrated categories
+       const librarySpaceId = uuidv4();
+       db.prepare("INSERT INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
+         .run(librarySpaceId, 'Library', 'Library', '#3b82f6');
+
+       // 4. Migrate existing categories to collections (preserve IDs)
+       const oldCategories = db.prepare("SELECT * FROM categories").all() as any[];
+       const insertCollection = db.prepare(`
+         INSERT OR IGNORE INTO collections (id, name, icon, color, space_id, parent_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+       `);
+       for (const cat of oldCategories) {
+         insertCollection.run(
+           cat.id,
+           cat.name,
+           cat.icon || 'Folder',
+           cat.color || '#' + Math.floor(Math.random()*0xffffff).toString(16).padStart(6, '0'),
+           librarySpaceId,
+           cat.parent_id || null,
+           cat.created_at
+         );
+       }
+
+       // 5. Migrate bookmarks to bookmark_collections
+       const bookmarks = db.prepare("SELECT id, category_id FROM bookmarks WHERE is_deleted = 0").all() as any[];
+       const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+       for (const b of bookmarks) {
+         if (b.category_id) {
+           // Link to migrated collection
+           insertLink.run(b.id, b.category_id);
+         } else {
+           // Add to Inbox collection
+           insertLink.run(b.id, 'inbox-collection');
+         }
+       }
+
+       console.log(`Migration complete: ${oldCategories.length} collections, ${bookmarks.length} bookmark links processed.`);
+     })();
+   } catch (err) {
+     console.error("Spaces migration failed:", err);
+   }
+ }
+
+ export const getDataDir = () => dataDir;
+ export default db;

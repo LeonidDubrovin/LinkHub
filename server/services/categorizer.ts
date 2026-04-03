@@ -28,111 +28,134 @@ export class CategorizationService {
     }
   }
 
-  async categorizeBookmark(bookmarkId: string, force: boolean = false): Promise<CategorizationServiceResult> {
-    // 1. Get bookmark
-    const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(bookmarkId) as any;
-    if (!bookmark) {
-      return { success: false, source: null, tags: [], error: "Bookmark not found" };
-    }
+   async categorizeBookmark(bookmarkId: string, force: boolean = false): Promise<CategorizationServiceResult> {
+     // 1. Get bookmark
+     const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(bookmarkId) as any;
+     if (!bookmark) {
+       return { success: false, source: null, tags: [], error: "Bookmark not found" };
+     }
 
-    // 2. Check if already categorized and not forcing
-    if (!force && bookmark.category_id) {
-      return { 
-        success: true, 
-        source: bookmark.categorization_source as any || 'manual', 
-        tags: [], 
-        error: null 
-      };
-    }
+     // 2. Check if already categorized (has category_id) and not forcing
+     if (!force && bookmark.category_id) {
+       return { 
+         success: true, 
+         source: bookmark.categorization_source as any || 'manual', 
+         tags: [], 
+         error: null 
+       };
+     }
 
-    // 3. Prepare data
-    const bookmarkData: BookmarkData = {
-      id: bookmark.id,
-      url: bookmark.url,
-      title: bookmark.title,
-      description: bookmark.description,
-      domain: bookmark.domain,
-      content_text: bookmark.content_text
-    };
+     // 3. Prepare data
+     const bookmarkData: BookmarkData = {
+       id: bookmark.id,
+       url: bookmark.url,
+       title: bookmark.title,
+       description: bookmark.description,
+       domain: bookmark.domain,
+       content_text: bookmark.content_text
+     };
 
-    // 4. Try LLM if configured
-    let result: CategorizationResult | null = null;
-    let source: 'llm' | 'local' | null = null;
+     // 4. Try LLM if configured
+     let result: CategorizationResult | null = null;
+     let source: 'llm' | 'local' | null = null;
 
-    if (this.llmStrategy && this.config.llm?.enabled) {
-      try {
-        result = await this.llmStrategy.categorize(bookmarkData);
-        source = 'llm';
-      } catch (error: any) {
-        console.warn(`LLM categorization failed for ${bookmarkId}:`, error.message);
-        result = null;
-      }
-    }
+     if (this.llmStrategy && this.config.llm?.enabled) {
+       try {
+         result = await this.llmStrategy.categorize(bookmarkData);
+         source = 'llm';
+       } catch (error: any) {
+         console.warn(`LLM categorization failed for ${bookmarkId}:`, error.message);
+         result = null;
+       }
+     }
 
-    // 5. Fallback to local heuristics if LLM failed or not configured
-    if (!result && this.config.localHeuristics?.enabled) {
-      result = await this.localStrategy.categorize(bookmarkData);
-      source = 'local';
-    }
+     // 5. Fallback to local heuristics if LLM failed or not configured
+     if (!result && this.config.localHeuristics?.enabled) {
+       result = await this.localStrategy.categorize(bookmarkData);
+       source = 'local';
+     }
 
-    // 6. If still no result, return uncategorized
-    if (!result || (!result.categoryId && !result.newCategoryName)) {
-      return {
-        success: false,
-        source: null,
-        tags: [],
-        error: "Could not determine category"
-      };
-    }
+     // 6. If still no result, return uncategorized (keep in Inbox)
+     if (!result || (!result.collectionIds && !result.collectionNames)) {
+       return {
+         success: false,
+         source: null,
+         tags: [],
+         error: "Could not determine collection"
+       };
+     }
 
-    // 7. Resolve or create category
-    let categoryId = result.categoryId;
-    if (!categoryId && result.newCategoryName) {
-      // Check if category exists by name
-      const existing = db.prepare("SELECT id FROM categories WHERE LOWER(name) = LOWER(?)").get(result.newCategoryName);
-      if (existing) {
-        categoryId = existing.id;
-      } else {
-        // Create new category
-        categoryId = uuidv4();
-        const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-        db.prepare(
-          "INSERT INTO categories (id, name, icon, color, parent_id) VALUES (?, ?, ?, ?, ?)"
-        ).run(categoryId, result.newCategoryName, "Folder", color, result.parentCategoryId || null);
-      }
-    }
+     // 7. Resolve collection IDs
+     let collectionIds: string[] = [];
+     
+     if (result.collectionIds && result.collectionIds.length > 0) {
+       collectionIds = result.collectionIds;
+     } else if (result.collectionNames && result.collectionNames.length > 0) {
+       // Resolve each collection name to an ID (create if needed)
+       for (const name of result.collectionNames) {
+         // Try to find collection by name (case-insensitive) across all spaces
+         const existing = db.prepare("SELECT id FROM collections WHERE LOWER(name) = LOWER(?) LIMIT 1").get(name) as any;
+         if (existing) {
+           collectionIds.push(existing.id);
+         } else {
+           // Create new collection in "Library" space
+           const librarySpace = db.prepare("SELECT id FROM spaces WHERE name = 'Library' LIMIT 1").get() as any;
+           if (!librarySpace) {
+             throw new Error("Library space not found");
+           }
+           const newId = uuidv4();
+           const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+           db.prepare(
+             "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
+           ).run(newId, name, "Folder", color, librarySpace.id, null);
+           collectionIds.push(newId);
+         }
+       }
+     }
 
-    // 8. Update bookmark with category
-    db.prepare(
-      "UPDATE bookmarks SET category_id = ?, categorization_at = ?, categorization_source = ? WHERE id = ?"
-    ).run(categoryId, new Date().toISOString(), source, bookmarkId);
+     if (collectionIds.length === 0) {
+       return { success: false, source: null, tags: [], error: "No collections resolved" };
+     }
 
-    // 9. Process tags: create and link
-    const tagIds: string[] = [];
-    for (const tagName of result.tags) {
-      let tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
-      let tagId;
-      if (!tag) {
-        tagId = uuidv4();
-        db.prepare("INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)").run(tagId, tagName);
-        tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
-        if (tag) tagId = tag.id;
-      } else {
-        tagId = tag.id;
-      }
-      tagIds.push(tagId);
-      
-      // Link bookmark to tag (avoid duplicates)
-      db.prepare("INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)").run(bookmarkId, tagId);
-    }
+     // 8. Remove old collection links (including Inbox) and add new ones
+     db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(bookmarkId);
+     
+     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+     for (const colId of collectionIds) {
+       insertLink.run(bookmarkId, colId);
+     }
 
-    return {
-      success: true,
-      source,
-      categoryId,
-      tags: result.tags
-    };
-  }
+     // 9. Update bookmark with first collection as legacy category_id for backward compatibility
+     db.prepare(
+       "UPDATE bookmarks SET category_id = ?, categorization_at = ?, categorization_source = ? WHERE id = ?"
+     ).run(collectionIds[0], new Date().toISOString(), source, bookmarkId);
+
+     // 10. Process tags: create and link
+     const tagIds: string[] = [];
+     for (const tagName of result.tags) {
+       let tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
+       let tagId;
+       if (!tag) {
+         tagId = uuidv4();
+         db.prepare("INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)").run(tagId, tagName);
+         tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
+         if (tag) tagId = tag.id;
+       } else {
+         tagId = tag.id;
+       }
+       tagIds.push(tagId);
+       
+       // Link bookmark to tag (avoid duplicates)
+       db.prepare("INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)").run(bookmarkId, tagId);
+     }
+
+     return {
+       success: true,
+       source,
+       collectionIds,
+       tags: result.tags
+     };
+   }
 
   async categorizeAll(onlyUntagged: boolean = true): Promise<{total: number, processed: number, failed: number, errors: string[]}> {
     let query = "SELECT id FROM bookmarks WHERE is_deleted = 0 AND category_id IS NULL";

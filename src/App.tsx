@@ -5,7 +5,7 @@ import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddBookmarkModal } from "./components/AddBookmarkModal";
 import { SettingsModal } from "./components/SettingsModal";
-import { Bookmark, Category, Tag, Domain } from "./types";
+import { Bookmark, Space, Collection, Tag, Domain } from "./types";
 import { format } from "date-fns";
 import {
   Plus,
@@ -31,14 +31,15 @@ import { cn } from "./lib/utils";
 import { getDomain, getYouTubeId } from './utils';
 
 export default function App() {
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [domains, setDomains] = useState<Domain[]>([]);
+   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+   const [spaces, setSpaces] = useState<Space[]>([]);
+   const [collections, setCollections] = useState<Collection[]>([]);
+   const [tags, setTags] = useState<Tag[]>([]);
+   const [domains, setDomains] = useState<Domain[]>([]);
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
-    null,
-  );
+   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(
+     null,
+   );
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [selectedBookmark, setSelectedBookmark] = useState<Bookmark | null>(
@@ -94,7 +95,11 @@ export default function App() {
    const [isCategorizing, setIsCategorizing] = useState(false);
 
    const [sortBy, setSortBy] = useState<"date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc">("date_desc");
-  const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
+   const [filterBy, setFilterBy] = useState<"all" | "has_images" | "has_summary" | "has_content">("all");
+
+   // Collections editing state
+   const [isEditingCollections, setIsEditingCollections] = useState(false);
+   const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
 
   useEffect(() => {
     localStorage.setItem('viewMode', viewMode);
@@ -118,19 +123,20 @@ export default function App() {
     }
   }, [selectedBookmark?.id]);
 
-  useEffect(() => {
-    fetchCategories();
-    fetchTags();
-    fetchDomains();
-    fetchBookmarks();
-  }, []);
+   useEffect(() => {
+     fetchSpaces();
+     fetchCollections();
+     fetchTags();
+     fetchDomains();
+     fetchBookmarks();
+   }, []);
 
-  useEffect(() => {
-    fetchBookmarks();
-    setSelectedBookmark(null);
-    setIsInspectorOpen(false);
-    setReaderContent(null);
-  }, [selectedCategoryId, selectedTagId, selectedDomain]);
+   useEffect(() => {
+     fetchBookmarks();
+     setSelectedBookmark(null);
+     setIsInspectorOpen(false);
+     setReaderContent(null);
+   }, [selectedCollectionId, selectedTagId, selectedDomain]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -157,16 +163,27 @@ export default function App() {
     }
   }, [isDragging, inspectorWidth]);
 
-  const fetchCategories = async () => {
-    try {
-      const res = await fetch("/api/categories");
-      const data = await res.json();
-      setCategories(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to fetch categories", e);
-      setCategories([]);
-    }
-  };
+   const fetchSpaces = async () => {
+     try {
+       const res = await fetch("/api/spaces");
+       const data = await res.json();
+       setSpaces(Array.isArray(data) ? data : []);
+     } catch (e) {
+       console.error("Failed to fetch spaces", e);
+       setSpaces([]);
+     }
+   };
+
+   const fetchCollections = async () => {
+     try {
+       const res = await fetch("/api/collections");
+       const data = await res.json();
+       setCollections(Array.isArray(data) ? data : []);
+     } catch (e) {
+       console.error("Failed to fetch collections", e);
+       setCollections([]);
+     }
+   };
 
   const fetchTags = async () => {
     try {
@@ -188,132 +205,190 @@ export default function App() {
       console.error("Failed to fetch domains", e);
       setDomains([]);
     }
-  };
+   };
 
-  const togglePinDomain = (domain: string, e: React.MouseEvent) => {
+   // Build tree: spaces -> collections (with nested children)
+   const treeSpaces = React.useMemo(() => {
+     if (spaces.length === 0 || collections.length === 0) return [];
+
+     // Group collections by space
+     const collectionsBySpace = new Map<string, Collection[]>();
+     for (const space of spaces) {
+       const spaceColls = collections.filter(c => c.space_id === space.id);
+       collectionsBySpace.set(space.id, spaceColls);
+     }
+
+     // Build nested tree for each space
+     const buildTree = (spaceId: string, parentId: string | null = null): Collection[] => {
+       const colls = collectionsBySpace.get(spaceId) || [];
+       const roots = colls.filter(c => c.parent_id === parentId);
+       return roots.map(c => ({
+         ...c,
+         children: buildTree(spaceId, c.id)
+       }));
+     };
+
+     return spaces.map(space => ({
+       ...space,
+       collections: buildTree(space.id)
+     }));
+   }, [spaces, collections]);
+
+   const renderCollections = (colls: Collection[], level: number) => {
+     return colls.map(coll => (
+       <div key={coll.id}>
+         <button
+           onClick={() => {
+             setSelectedCollectionId(coll.id);
+             setSelectedTagId(null);
+             setSelectedDomain(null);
+           }}
+           className={cn(
+             "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5",
+             selectedCollectionId === coll.id
+               ? "bg-blue-100 text-blue-700 font-medium"
+               : "hover:bg-slate-200 text-slate-700"
+           )}
+           style={{ paddingLeft: `${0.5 + level * 1}rem` }}
+         >
+           <Icon name={coll.icon || "Folder"} size={16} color={coll.color} />
+           <span className="truncate flex-1 text-left">{coll.name}</span>
+           {coll.bookmarkCount !== undefined && (
+             <span className="text-xs text-slate-400">{coll.bookmarkCount}</span>
+           )}
+         </button>
+         {coll.children && coll.children.length > 0 && renderCollections(coll.children, level + 1)}
+       </div>
+     ));
+   };
+
+   const togglePinDomain = (domain: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setPinnedDomains(prev =>
       prev.includes(domain) ? prev.filter(d => d !== domain) : [...prev, domain]
     );
   };
 
-  const fetchBookmarks = async () => {
-    let url = "/api/bookmarks?";
-    if (selectedCategoryId) url += `categoryId=${encodeURIComponent(selectedCategoryId)}&`;
-    if (selectedTagId) url += `tagId=${encodeURIComponent(selectedTagId)}&`;
-    if (selectedDomain) url += `domain=${encodeURIComponent(selectedDomain)}&`;
+   const fetchBookmarks = async () => {
+     let url = "/api/bookmarks?";
+     if (selectedCollectionId) url += `collectionIds=${encodeURIComponent(selectedCollectionId)}&`;
+     if (selectedTagId) url += `tagId=${encodeURIComponent(selectedTagId)}&`;
+     if (selectedDomain) url += `domain=${encodeURIComponent(selectedDomain)}&`;
 
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      setBookmarks(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to fetch bookmarks", e);
-      setBookmarks([]);
-    }
-  };
+     try {
+       const res = await fetch(url);
+       const data = await res.json();
+       setBookmarks(Array.isArray(data) ? data : []);
+     } catch (e) {
+       console.error("Failed to fetch bookmarks", e);
+       setBookmarks([]);
+     }
+   };
 
-  const handleAddBookmark = async (newUrls: string) => {
-    if (!newUrls) return;
+   const handleAddBookmark = async (newUrls: string, collectionIds?: string[]) => {
+     if (!newUrls) return;
 
-    const urls = newUrls.split('\n').map(u => {
-      let trimmed = u.trim();
-      if (trimmed && !trimmed.match(/^https?:\/\//i)) {
-        trimmed = `https://${trimmed}`;
-      }
-      return trimmed;
-    }).filter(u => u);
-    if (urls.length === 0) return;
+     const urls = newUrls.split('\n').map(u => {
+       let trimmed = u.trim();
+       if (trimmed && !trimmed.match(/^https?:\/\//i)) {
+         trimmed = `https://${trimmed}`;
+       }
+       return trimmed;
+     }).filter(u => u);
+     if (urls.length === 0) return;
 
-    setIsAddingLoading(true);
-    try {
-      if (urls.length === 1) {
-        const res = await fetch("/api/bookmarks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: urls[0] }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (data.exists) {
-            setToast({ message: `Bookmark already exists: ${data.title || urls[0]}`, type: 'error' });
-          } else {
-            setToast({ message: 'Bookmark added successfully', type: 'success' });
-            setIsAdding(false);
-            await fetchBookmarks();
-            fetchCategories();
-            fetchTags();
-            fetchDomains();
-            if (data.needsRefresh) {
-              handleRefreshBookmark(data.id);
-            }
-          }
-        } else {
-          setToast({ message: data.error || 'Failed to add bookmark', type: 'error' });
-        }
-      } else {
-        const res = await fetch("/api/bookmarks/bulk", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          const existingUrls = data.results.filter((r: any) => r.exists);
-          const addedUrls = data.results.filter((r: any) => r.success);
-          
-          let message = `Added ${addedUrls.length} new bookmarks.`;
-          if (existingUrls.length > 0) {
-            message += ` ${existingUrls.length} already existed.`;
-          }
-          
-          setToast({ message, type: addedUrls.length > 0 ? 'success' : 'info' });
-          
-          setIsAdding(false);
-          if (addedUrls.length > 0) {
-            await fetchBookmarks();
-            fetchCategories();
-            fetchTags();
-            fetchDomains();
-            
-            // Trigger refresh for all newly added bookmarks
-            const refreshPromises = addedUrls.map((r: any) => {
-              if (r.needsRefresh) {
-                return handleRefreshBookmark(r.id, true);
-              }
-              return Promise.resolve();
-            });
-            
-            Promise.all(refreshPromises).then(() => {
-              fetchBookmarks();
-              fetchCategories();
+     setIsAddingLoading(true);
+     try {
+       // For multiple URLs, we can either use bulk endpoint (without collectionIds) or send individually
+       if (urls.length === 1) {
+         const res = await fetch("/api/bookmarks", {
+           method: "POST",
+           headers: { "Content-Type": "application/json" },
+           body: JSON.stringify({ url: urls[0], collectionIds }),
+         });
+         const data = await res.json();
+         if (res.ok) {
+           if (data.exists) {
+             setToast({ message: `Bookmark already exists: ${data.title || urls[0]}`, type: 'error' });
+           } else {
+             setToast({ message: 'Bookmark added successfully', type: 'success' });
+              setIsAdding(false);
+              await fetchBookmarks();
+              fetchCollections();
               fetchTags();
               fetchDomains();
-            });
-          }
-        } else {
-          setToast({ message: data.error || 'Failed to add bookmarks', type: 'error' });
-        }
-      }
-    } catch (error) {
-      console.error(error);
-      setToast({ message: 'An unexpected error occurred', type: 'error' });
-    } finally {
-      setIsAddingLoading(false);
-    }
-  };
+             if (data.needsRefresh) {
+               handleRefreshBookmark(data.id);
+             }
+           }
+         } else {
+           setToast({ message: data.error || 'Failed to add bookmark', type: 'error' });
+         }
+       } else {
+         // For multiple, send sequentially with collectionIds
+         const results = [];
+         for (const url of urls) {
+           const res = await fetch("/api/bookmarks", {
+             method: "POST",
+             headers: { "Content-Type": "application/json" },
+             body: JSON.stringify({ url, collectionIds }),
+           });
+           const data = await res.json();
+           results.push(data);
+         }
+
+         const existingUrls = results.filter((r: any) => r.exists);
+         const addedUrls = results.filter((r: any) => r.success);
+         
+         let message = `Added ${addedUrls.length} new bookmarks.`;
+         if (existingUrls.length > 0) {
+           message += ` ${existingUrls.length} already existed.`;
+         }
+         
+         setToast({ message, type: addedUrls.length > 0 ? 'success' : 'info' });
+         
+         setIsAdding(false);
+         if (addedUrls.length > 0) {
+           await fetchBookmarks();
+           fetchCollections();
+           fetchTags();
+           fetchDomains();
+          
+           // Trigger refresh for all newly added bookmarks
+           const refreshPromises = addedUrls.map((r: any) => {
+             if (r.needsRefresh) {
+               return handleRefreshBookmark(r.id, true);
+             }
+             return Promise.resolve();
+           });
+           
+           Promise.all(refreshPromises).then(() => {
+             fetchBookmarks();
+             fetchCollections();
+             fetchTags();
+             fetchDomains();
+           });
+         }
+       }
+     } catch (error) {
+       console.error(error);
+       setToast({ message: 'An unexpected error occurred', type: 'error' });
+     } finally {
+       setIsAddingLoading(false);
+     }
+   };
 
   const handleRefreshBookmark = async (id: string, skipFetch = false) => {
     setRefreshingBookmarkIds(prev => new Set(prev).add(id));
     try {
       const res = await fetch(`/api/bookmarks/${id}/refresh`, { method: 'POST' });
       if (res.ok) {
-        if (!skipFetch) {
-          await fetchBookmarks();
-          await fetchCategories();
-          await fetchTags();
-          await fetchDomains();
-        }
+         if (!skipFetch) {
+           await fetchBookmarks();
+           await fetchCollections();
+           await fetchTags();
+           await fetchDomains();
+         }
         const updatedBookmarkRes = await fetch(`/api/bookmarks/${id}`);
         if (updatedBookmarkRes.ok) {
           const updated = await updatedBookmarkRes.json();
@@ -337,6 +412,33 @@ export default function App() {
     }
   };
 
+  const handleUpdateBookmarkCollections = async (bookmarkId: string, collectionIds: string[]) => {
+    try {
+      const res = await fetch(`/api/bookmarks/${bookmarkId}/collections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ collectionIds }),
+      });
+      if (res.ok) {
+        // Refresh selected bookmark detail
+        const updatedRes = await fetch(`/api/bookmarks/${bookmarkId}`);
+        if (updatedRes.ok) {
+          const updated = await updatedRes.json();
+          setSelectedBookmark(updated);
+        }
+        // Also refresh lists and counts
+        fetchBookmarks();
+        fetchCollections();
+        setToast({ message: "Collections updated", type: "success" });
+      } else {
+        setToast({ message: "Failed to update collections", type: "error" });
+      }
+    } catch (error) {
+      console.error("Update collections error:", error);
+      setToast({ message: "Failed to update collections", type: "error" });
+    }
+  };
+
   const handleDeleteBookmark = async (id: string) => {
     setConfirmDialog({
       isOpen: true,
@@ -345,13 +447,13 @@ export default function App() {
       onConfirm: async () => {
         try {
           const res = await fetch(`/api/bookmarks/${id}`, { method: "DELETE" });
-          if (res.ok) {
-            setSelectedBookmark(null);
-            fetchBookmarks();
-            fetchCategories();
-            fetchTags();
-            fetchDomains();
-            setToast({ message: 'Bookmark deleted successfully', type: 'success' });
+           if (res.ok) {
+             setSelectedBookmark(null);
+             fetchBookmarks();
+             fetchCollections();
+             fetchTags();
+             fetchDomains();
+             setToast({ message: 'Bookmark deleted successfully', type: 'success' });
           } else {
             setToast({ message: 'Failed to delete bookmark', type: 'error' });
           }
@@ -407,10 +509,10 @@ export default function App() {
             if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
               setSelectedBookmark(null);
             }
-            fetchBookmarks();
-            fetchCategories();
-            fetchTags();
-            fetchDomains();
+             fetchBookmarks();
+             fetchCollections();
+             fetchTags();
+             fetchDomains();
           }
         } catch (e) {
           console.error("Failed to bulk delete", e);
@@ -430,13 +532,13 @@ export default function App() {
         body: JSON.stringify({ onlyUntagged: true })
       });
       const data = await res.json();
-      if (res.ok) {
-        setToast({ message: `Categorized ${data.processed} of ${data.total} bookmarks`, type: 'success' });
-        // Refresh
-        fetchBookmarks();
-        fetchCategories();
-        fetchTags();
-      } else {
+       if (res.ok) {
+         setToast({ message: `Categorized ${data.processed} of ${data.total} bookmarks`, type: 'success' });
+         // Refresh
+         fetchBookmarks();
+         fetchCollections();
+         fetchTags();
+       } else {
         setToast({ message: data.error || "Failed to categorize bookmarks", type: 'error' });
       }
     } catch (e: any) {
@@ -468,10 +570,10 @@ export default function App() {
             successCount += results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
           }
           
-          await fetchBookmarks();
-          await fetchCategories();
-          await fetchTags();
-          await fetchDomains();
+           await fetchBookmarks();
+           await fetchCollections();
+           await fetchTags();
+           await fetchDomains();
           
           if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
             const updatedBookmarkRes = await fetch(`/api/bookmarks/${selectedBookmark.id}`);
@@ -541,11 +643,11 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setConfirmDialog({
-      isOpen: true,
-      title: "Restore Backup",
-      message: "Are you sure you want to restore this backup? This will OVERWRITE all your current bookmarks and categories. This action cannot be undone.",
-      onConfirm: async () => {
+     setConfirmDialog({
+       isOpen: true,
+       title: "Restore Backup",
+       message: "Are you sure you want to restore this backup? This will OVERWRITE all your current bookmarks and collections. This action cannot be undone.",
+       onConfirm: async () => {
         try {
           const text = await file.text();
           const backupData = JSON.parse(text);
@@ -567,15 +669,15 @@ export default function App() {
 
           setToast({ message: "Backup restored successfully", type: "success" });
           
-          // Refresh all data
-          setSelectedBookmark(null);
-          setSelectedCategoryId(null);
-          setSelectedTagId(null);
-          setSelectedDomain(null);
-          fetchBookmarks();
-          fetchCategories();
-          fetchTags();
-          fetchDomains();
+           // Refresh all data
+           setSelectedBookmark(null);
+           setSelectedCollectionId(null);
+           setSelectedTagId(null);
+           setSelectedDomain(null);
+           fetchBookmarks();
+           fetchCollections();
+           fetchTags();
+           fetchDomains();
         } catch (error: any) {
           console.error("Restore error:", error);
           setToast({ message: error.message || "Failed to restore backup", type: "error" });
@@ -680,13 +782,13 @@ export default function App() {
             </div>
             <button
               onClick={() => {
-                setSelectedCategoryId(null);
+                setSelectedCollectionId(null);
                 setSelectedTagId(null);
                 setSelectedDomain(null);
               }}
               className={cn(
                 "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
-                !selectedCategoryId && !selectedTagId && !selectedDomain
+                !selectedCollectionId && !selectedTagId && !selectedDomain
                   ? "bg-blue-100 text-blue-700 font-medium"
                   : "hover:bg-slate-200 text-slate-700",
               )}
@@ -694,7 +796,7 @@ export default function App() {
               <Globe
                 size={16}
                 className={
-                  !selectedCategoryId && !selectedTagId && !selectedDomain
+                  !selectedCollectionId && !selectedTagId && !selectedDomain
                     ? "text-blue-600"
                     : "text-slate-400"
                 }
@@ -703,57 +805,23 @@ export default function App() {
             </button>
           </div>
 
+          {/* Spaces & Collections Tree */}
           <div className="px-3 mb-4">
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-              Categories
+              Collections
             </div>
-            {categories.filter(c => !c.parent_id).map((cat) => {
-              const renderCategory = (c: Category, level = 0) => {
-                const subcats = categories.filter(sub => sub.parent_id === c.id);
-                return (
-                  <div key={c.id}>
-                    <button
-                      onClick={() => {
-                        setSelectedCategoryId(c.id);
-                        setSelectedTagId(null);
-                        setSelectedDomain(null);
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5",
-                        selectedCategoryId === c.id
-                          ? "bg-blue-100 text-blue-700 font-medium"
-                          : "hover:bg-slate-200 text-slate-700",
-                      )}
-                      style={{ paddingLeft: `${0.5 + level * 1.5}rem` }}
-                    >
-                      <Icon name={c.icon || "Folder"} size={16} color={c.color} />
-                      {c.name}
-                    </button>
-                    {subcats.map(sub => renderCategory(sub, level + 1))}
+            {treeSpaces.length === 0 ? (
+              <div className="text-xs text-slate-400 px-2">No collections</div>
+            ) : (
+              treeSpaces.map(space => (
+                <div key={space.id} className="mb-2">
+                  <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
+                    {space.name}
                   </div>
-                );
-              };
-              return renderCategory(cat);
-            })}
-          </div>
-
-          {/* Uncategorized */}
-          <div className="px-3 mb-4">
-            <div className="flex items-center justify-between px-2 mb-2">
-              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                Uncategorized
-              </div>
-              <span className="text-xs text-slate-400">
-                {bookmarks.filter(b => !b.category_id).length}
-              </span>
-            </div>
-            <button
-              onClick={handleCategorizeAll}
-              disabled={isCategorizing || bookmarks.filter(b => !b.category_id).length === 0}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md text-sm font-medium transition-colors"
-            >
-              {isCategorizing ? "Categorizing..." : "Categorize All"}
-            </button>
+                  {space.collections && renderCollections(space.collections, 0)}
+                </div>
+              ))
+            )}
           </div>
 
           {pinnedDomains.length > 0 && (
@@ -761,21 +829,21 @@ export default function App() {
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
                 Pinned
               </div>
-              {domains.filter(d => pinnedDomains.includes(d.domain)).map((d) => (
-                <button
-                  key={`pinned-${d.domain}`}
-                  onClick={() => {
-                    setSelectedDomain(d.domain);
-                    setSelectedCategoryId(null);
-                    setSelectedTagId(null);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
-                    selectedDomain === d.domain
-                      ? "bg-blue-100 text-blue-700 font-medium"
-                      : "hover:bg-slate-200 text-slate-700",
-                  )}
-                >
+               {domains.filter(d => pinnedDomains.includes(d.domain)).map((d) => (
+                 <button
+                   key={`pinned-${d.domain}`}
+                   onClick={() => {
+                     setSelectedDomain(d.domain);
+                     setSelectedCollectionId(null);
+                     setSelectedTagId(null);
+                   }}
+                   className={cn(
+                     "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
+                     selectedDomain === d.domain
+                       ? "bg-blue-100 text-blue-700 font-medium"
+                       : "hover:bg-slate-200 text-slate-700",
+                   )}
+                 >
                   <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
                   <span className="text-xs text-slate-400 font-medium group-hover:hidden">{d.count}</span>
@@ -796,21 +864,21 @@ export default function App() {
               <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
                 Resources
               </div>
-              {domains.filter(d => !pinnedDomains.includes(d.domain)).map((d) => (
-                <button
-                  key={d.domain}
-                  onClick={() => {
-                    setSelectedDomain(d.domain);
-                    setSelectedCategoryId(null);
-                    setSelectedTagId(null);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
-                    selectedDomain === d.domain
-                      ? "bg-blue-100 text-blue-700 font-medium"
-                      : "hover:bg-slate-200 text-slate-700",
-                  )}
-                >
+               {domains.filter(d => !pinnedDomains.includes(d.domain)).map((d) => (
+                 <button
+                   key={d.domain}
+                   onClick={() => {
+                     setSelectedDomain(d.domain);
+                     setSelectedCollectionId(null);
+                     setSelectedTagId(null);
+                   }}
+                   className={cn(
+                     "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
+                     selectedDomain === d.domain
+                       ? "bg-blue-100 text-blue-700 font-medium"
+                       : "hover:bg-slate-200 text-slate-700",
+                   )}
+                 >
                   <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
                   <span className="text-xs text-slate-400 font-medium group-hover:hidden">{d.count}</span>
@@ -832,24 +900,24 @@ export default function App() {
                 Tags
               </div>
               <div className="flex flex-wrap gap-1 px-2">
-                {tags.map((tag) => (
-                  <button
-                    key={tag.id}
-                    onClick={() => {
-                      setSelectedTagId(tag.id);
-                      setSelectedCategoryId(null);
-                      setSelectedDomain(null);
-                    }}
-                    className={cn(
-                      "text-xs px-2 py-1 rounded-md border transition-colors",
-                      selectedTagId === tag.id
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-white border-slate-200 text-slate-600 hover:border-slate-300",
-                    )}
-                  >
-                    #{tag.name}
-                  </button>
-                ))}
+                 {tags.map((tag) => (
+                   <button
+                     key={tag.id}
+                     onClick={() => {
+                       setSelectedTagId(tag.id);
+                       setSelectedCollectionId(null);
+                       setSelectedDomain(null);
+                     }}
+                     className={cn(
+                       "text-xs px-2 py-1 rounded-md border transition-colors",
+                       selectedTagId === tag.id
+                         ? "bg-blue-600 text-white border-blue-600"
+                         : "bg-white border-slate-200 text-slate-600 hover:border-slate-300",
+                     )}
+                   >
+                     #{tag.name}
+                   </button>
+                 ))}
               </div>
             </div>
           )}
@@ -871,14 +939,14 @@ export default function App() {
               onChange={toggleSelectAll}
               className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
             />
-            <div className="flex items-center gap-2 text-lg font-semibold whitespace-nowrap">
-              {selectedCategoryId
-                ? categories.find((c) => c.id === selectedCategoryId)?.name
-                : selectedTagId
-                  ? `#${tags.find((t) => t.id === selectedTagId)?.name}`
-                  : selectedDomain
-                    ? selectedDomain
-                    : "All Bookmarks"}
+             <div className="flex items-center gap-2 text-lg font-semibold whitespace-nowrap">
+               {selectedCollectionId
+                 ? collections.find((c) => c.id === selectedCollectionId)?.name
+                 : selectedTagId
+                   ? `#${tags.find((t) => t.id === selectedTagId)?.name}`
+                   : selectedDomain
+                     ? selectedDomain
+                     : "All Bookmarks"}
               <span className="text-sm font-normal text-slate-400 ml-2">
                 {filteredBookmarks.length}
               </span>
@@ -1109,25 +1177,33 @@ export default function App() {
                       </p>
                     )}
 
-                    <div className="flex items-center gap-2 mt-2">
-                      {bookmark.category_name && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 flex items-center gap-1">
-                          <div
-                            className="w-1.5 h-1.5 rounded-full"
-                            style={{ backgroundColor: bookmark.category_color }}
-                          />
-                          {bookmark.category_name}
-                        </span>
-                      )}
-                      {bookmark.tags?.slice(0, 2).map((tag) => (
-                        <span
-                          key={tag.id}
-                          className="text-[10px] text-slate-400"
-                        >
-                          #{tag.name}
-                        </span>
-                      ))}
-                    </div>
+                     <div className="flex items-center gap-2 mt-2 flex-wrap">
+                       {(bookmark.collections || []).slice(0, 2).map((coll: any) => (
+                         <span
+                           key={coll.id}
+                           className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 flex items-center gap-1"
+                         >
+                           <div
+                             className="w-1.5 h-1.5 rounded-full"
+                             style={{ backgroundColor: coll.color }}
+                           />
+                           {coll.name}
+                         </span>
+                       ))}
+                       {(bookmark.collections || []).length > 2 && (
+                         <span className="text-[10px] text-slate-400">
+                           +{(bookmark.collections || []).length - 2} more
+                         </span>
+                       )}
+                       {bookmark.tags?.slice(0, 2).map((tag) => (
+                         <span
+                           key={tag.id}
+                           className="text-[10px] text-slate-400"
+                         >
+                           #{tag.name}
+                         </span>
+                       ))}
+                     </div>
                   </div>
 
                   {/* Actions */}
@@ -1391,23 +1467,64 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
-                      Category
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        Collections
+                      </div>
+                      <button
+                        onClick={() => {
+                          // Toggle edit mode
+                          if (isEditingCollections) {
+                            // Save
+                            handleUpdateBookmarkCollections(selectedBookmark.id, selectedCollectionIdsForEdit);
+                            setIsEditingCollections(false);
+                          } else {
+                            // Enter edit mode
+                            setSelectedCollectionIdsForEdit(selectedBookmark.collections?.map(c => c.id) || []);
+                            setIsEditingCollections(true);
+                          }
+                        }}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        {isEditingCollections ? 'Save' : 'Edit'}
+                      </button>
                     </div>
-                    {selectedBookmark.category_name ? (
-                      <div className="flex items-center gap-2 text-sm text-slate-700">
-                        <div
-                          className="w-2 h-2 rounded-full"
-                          style={{
-                            backgroundColor: selectedBookmark.category_color,
-                          }}
-                        />
-                        {selectedBookmark.category_name}
+                    {isEditingCollections ? (
+                      <div className="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
+                        {collections.filter(c => !c.parent_id).map(coll => (
+                          <label key={coll.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedCollectionIdsForEdit.includes(coll.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedCollectionIdsForEdit(prev => [...prev, coll.id]);
+                                } else {
+                                  setSelectedCollectionIdsForEdit(prev => prev.filter(id => id !== coll.id));
+                                }
+                              }}
+                              className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <Icon name={coll.icon || "Folder"} size={14} color={coll.color} />
+                            <span>{coll.name}</span>
+                          </label>
+                        ))}
                       </div>
                     ) : (
-                      <span className="text-sm text-slate-400">
-                        Uncategorized
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        {(selectedBookmark.collections || []).map((coll: any) => (
+                          <div key={coll.id} className="flex items-center gap-2 text-sm text-slate-700">
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: coll.color }}
+                            />
+                            {coll.name}
+                          </div>
+                        ))}
+                        {(selectedBookmark.collections || []).length === 0 && (
+                          <span className="text-sm text-slate-400">No collections</span>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div>
@@ -1452,13 +1569,15 @@ export default function App() {
         </div>
       )}
 
-      {/* ADD BOOKMARK MODAL */}
-      <AddBookmarkModal
-        isOpen={isAdding}
-        isLoading={isAddingLoading}
-        onClose={() => setIsAdding(false)}
-        onSubmit={handleAddBookmark}
-      />
+       {/* ADD BOOKMARK MODAL */}
+       <AddBookmarkModal
+         isOpen={isAdding}
+         isLoading={isAddingLoading}
+         onClose={() => setIsAdding(false)}
+         onSubmit={handleAddBookmark}
+         collections={collections}
+         defaultCollectionIds={selectedCollectionId ? [selectedCollectionId] : []}
+       />
 
       {/* SETTINGS MODAL */}
       <SettingsModal

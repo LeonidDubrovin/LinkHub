@@ -150,15 +150,224 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
   }
 });
 
-router.get("/categories", (req, res) => {
-  const categories = db.prepare("SELECT * FROM categories ORDER BY name").all();
-  res.json(categories);
-});
+ // ============ SPACES ============
 
-router.get("/tags", (req, res) => {
-  const tags = db.prepare("SELECT * FROM tags ORDER BY name").all();
-  res.json(tags);
-});
+ router.get("/spaces", (req, res) => {
+   try {
+     const spaces = db.prepare(`
+       SELECT s.*, 
+         (SELECT COUNT(*) FROM collections WHERE space_id = s.id) as collectionCount
+       FROM spaces s
+       ORDER BY s.name
+     `).all();
+     res.json(spaces);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.post("/spaces", (req, res) => {
+   try {
+     const { name, icon, color } = req.body;
+     if (!name) {
+       return res.status(400).json({ error: "Name is required" });
+     }
+     const id = uuidv4();
+     const insertSpace = db.prepare(
+       "INSERT INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)"
+     );
+     insertSpace.run(id, name, icon || null, color || null);
+     const space = db.prepare("SELECT * FROM spaces WHERE id = ?").get(id);
+     res.json(space);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.put("/spaces/:id", (req, res) => {
+   try {
+     const { id } = req.params;
+     const { name, icon, color } = req.body;
+     const update = db.prepare(
+       "UPDATE spaces SET name = ?, icon = ?, color = ? WHERE id = ?"
+     );
+     update.run(name, icon, color, id);
+     const space = db.prepare("SELECT * FROM spaces WHERE id = ?").get(id);
+     if (!space) {
+       return res.status(404).json({ error: "Space not found" });
+     }
+     res.json(space);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.delete("/spaces/:id", (req, res) => {
+   try {
+     const { id } = req.params;
+     // Delete space cascades to collections (via FK) but bookmarks remain
+     const deleteSpace = db.prepare("DELETE FROM spaces WHERE id = ?");
+     const result = deleteSpace.run(id);
+     if (result.changes === 0) {
+       return res.status(404).json({ error: "Space not found" });
+     }
+     res.json({ success: true });
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ // ============ COLLECTIONS ============
+
+ router.get("/collections", (req, res) => {
+   try {
+     const { spaceId } = req.query;
+     let query = `
+       SELECT c.*, 
+         (SELECT COUNT(*) FROM bookmark_collections bc WHERE bc.collection_id = c.id) as bookmarkCount
+       FROM collections c
+     `;
+     const params: any[] = [];
+     
+     if (spaceId) {
+       query += " WHERE c.space_id = ?";
+       params.push(spaceId);
+     }
+     
+     query += " ORDER BY c.name";
+     
+     const collections = db.prepare(query).all(...params);
+     res.json(collections);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.post("/collections", (req, res) => {
+   try {
+     const { name, icon, color, space_id, parent_id } = req.body;
+     if (!name || !space_id) {
+       return res.status(400).json({ error: "Name and space_id are required" });
+     }
+     const id = uuidv4();
+     const insertCollection = db.prepare(
+       "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
+     );
+     insertCollection.run(id, name, icon || "Folder", color || null, space_id, parent_id || null);
+     const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
+     res.json(collection);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.put("/collections/:id", (req, res) => {
+   try {
+     const { id } = req.params;
+     const { name, icon, color, parent_id } = req.body;
+     const update = db.prepare(
+       "UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ? WHERE id = ?"
+     );
+     update.run(name, icon, color, parent_id || null, id);
+     const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
+     if (!collection) {
+       return res.status(404).json({ error: "Collection not found" });
+     }
+     res.json(collection);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.delete("/collections/:id", (req, res) => {
+   try {
+     const { id } = req.params;
+     // First unlink all bookmarks from this collection
+     db.prepare("DELETE FROM bookmark_collections WHERE collection_id = ?").run(id);
+     // Then delete the collection
+     const deleteColl = db.prepare("DELETE FROM collections WHERE id = ?");
+     const result = deleteColl.run(id);
+     if (result.changes === 0) {
+       return res.status(404).json({ error: "Collection not found" });
+     }
+     res.json({ success: true });
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ // ============ BOOKMARK-COLLECTION ASSOCIATIONS ============
+
+ router.get("/bookmarks/:id/collections", (req, res) => {
+   try {
+     const { id } = req.params;
+     const collections = db.prepare(`
+       SELECT c.* FROM collections c
+       JOIN bookmark_collections bc ON c.id = bc.collection_id
+       WHERE bc.bookmark_id = ?
+       ORDER BY c.name
+     `).all(id);
+     res.json(collections);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.post("/bookmarks/:id/collections", (req, res) => {
+   try {
+     const { id } = req.params;
+     const { collectionIds } = req.body;
+     if (!Array.isArray(collectionIds) || collectionIds.length === 0) {
+       return res.status(400).json({ error: "collectionIds array is required" });
+     }
+
+     // Validate collections exist
+     const placeholders = collectionIds.map(() => '?').join(',');
+     const existing = db.prepare(`SELECT id FROM collections WHERE id IN (${placeholders})`).all(...collectionIds) as any[];
+     if (existing.length !== collectionIds.length) {
+       return res.status(400).json({ error: "One or more collections not found" });
+     }
+
+     // Replace all existing links with new ones
+     db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
+     const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+     for (const colId of collectionIds) {
+       insert.run(id, colId);
+     }
+
+     // Update legacy category_id to first collection for backward compatibility
+     db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], id);
+
+     const collections = db.prepare(`
+       SELECT c.* FROM collections c
+       JOIN bookmark_collections bc ON c.id = bc.collection_id
+       WHERE bc.bookmark_id = ?
+     `).all(id);
+     res.json({ success: true, collections });
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
+
+ router.delete("/bookmarks/:id/collections/:collectionId", (req, res) => {
+   try {
+     const { id, collectionId } = req.params;
+     db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ? AND collection_id = ?").run(id, collectionId);
+     
+     // If removed collection was the legacy category_id, clear it or set to another
+     const bookmark = db.prepare("SELECT category_id FROM bookmarks WHERE id = ?").get(id) as any;
+     if (bookmark && bookmark.category_id === collectionId) {
+       // Find another collection for this bookmark, or null
+       const another = db.prepare("SELECT collection_id FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1").get(id) as any;
+       const newCatId = another ? another.collection_id : null;
+       db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(newCatId, id);
+     }
+     
+     res.json({ success: true });
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+  });
 
 router.get("/domains", (req, res) => {
   const domains = db.prepare(`
@@ -172,8 +381,18 @@ router.get("/domains", (req, res) => {
 });
 
 router.get("/bookmarks", (req, res) => {
-  const { categoryId, tagId, domain } = req.query;
+  const { collectionIds, spaceId, categoryId, tagId, domain } = req.query;
 
+  // Parse collectionIds (comma-separated) into array
+  let collIds: string[] = [];
+  if (collectionIds) {
+    collIds = String(collectionIds).split(',').filter(Boolean);
+  } else if (categoryId) {
+    // Legacy: treat categoryId as collectionId
+    collIds = [String(categoryId)];
+  }
+
+  // Base query (keep legacy category joins)
   let query = `
     SELECT b.*, c.name as category_name, c.color as category_color 
     FROM bookmarks b
@@ -182,22 +401,43 @@ router.get("/bookmarks", (req, res) => {
   `;
   const params: any[] = [];
 
-  if (categoryId) {
-    query += ` AND b.category_id IN (
-      WITH RECURSIVE CategoryTree AS (
-        SELECT id FROM categories WHERE id = ?
+  // Filter by collection tree (if collectionIds provided)
+  if (collIds.length > 0) {
+    const placeholders = collIds.map(() => '?').join(',');
+    const cte = `
+      WITH RECURSIVE targetCollections AS (
+        SELECT id FROM collections WHERE id IN (${placeholders})
         UNION ALL
-        SELECT c.id FROM categories c
-        JOIN CategoryTree ct ON c.parent_id = ct.id
+        SELECT c.id FROM collections c JOIN targetCollections tc ON c.parent_id = tc.id
       )
-      SELECT id FROM CategoryTree
+    `;
+    query = cte + query + ` AND EXISTS (
+      SELECT 1 FROM bookmark_collections bc 
+      WHERE bc.bookmark_id = b.id 
+        AND bc.collection_id IN (SELECT id FROM targetCollections)
     )`;
-    params.push(categoryId);
+    params.push(...collIds);
+  }
+
+  // Filter by space (all collections in space including nested)
+  if (spaceId) {
+    const spaceCte = `
+      WITH RECURSIVE spaceCollections AS (
+        SELECT id FROM collections WHERE space_id = ?
+        UNION ALL
+        SELECT c.id FROM collections c JOIN spaceCollections sc ON c.parent_id = sc.id
+      )
+    `;
+    query = spaceCte + query + ` AND EXISTS (
+      SELECT 1 FROM bookmark_collections bc 
+      WHERE bc.bookmark_id = b.id 
+        AND bc.collection_id IN (SELECT id FROM spaceCollections)
+    )`;
+    params.push(String(spaceId));
   }
 
   if (tagId) {
-    query +=
-      " AND b.id IN (SELECT bookmark_id FROM bookmark_tags WHERE tag_id = ?)";
+    query += " AND b.id IN (SELECT bookmark_id FROM bookmark_tags WHERE tag_id = ?)";
     params.push(tagId);
   }
 
@@ -214,7 +454,7 @@ router.get("/bookmarks", (req, res) => {
     return res.json([]);
   }
 
-  // Fetch tags for all bookmarks in chunks to avoid SQLite variable limits
+  // Fetch tags for all bookmarks in chunks
   const bookmarkIds = bookmarks.map(b => b.id);
   const allTags: any[] = [];
   const chunkSize = 500;
@@ -232,95 +472,144 @@ router.get("/bookmarks", (req, res) => {
     allTags.push(...chunkTags);
   }
 
+  // Fetch collections for all bookmarks in chunks
+  const allCollections: any[] = [];
+  for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
+    const chunk = bookmarkIds.slice(i, i + chunkSize);
+    const placeholders = chunk.map(() => '?').join(',');
+    const collQuery = `
+      SELECT bc.bookmark_id, c.* 
+      FROM bookmark_collections bc
+      JOIN collections c ON bc.collection_id = c.id
+      WHERE bc.bookmark_id IN (${placeholders})
+    `;
+    const chunkColls = db.prepare(collQuery).all(...chunk) as any[];
+    allCollections.push(...chunkColls);
+  }
+
   // Group tags by bookmark_id
   const tagsByBookmarkId = allTags.reduce((acc, tag) => {
-    if (!acc[tag.bookmark_id]) {
-      acc[tag.bookmark_id] = [];
-    }
-    // Remove bookmark_id from the tag object before sending to client
+    if (!acc[tag.bookmark_id]) acc[tag.bookmark_id] = [];
     const { bookmark_id, ...tagData } = tag;
     acc[tag.bookmark_id].push(tagData);
     return acc;
   }, {} as Record<string, any[]>);
 
-  const bookmarksWithTags = bookmarks.map((b) => ({
+  // Group collections by bookmark_id
+  const collectionsByBookmarkId = allCollections.reduce((acc, row) => {
+    if (!acc[row.bookmark_id]) acc[row.bookmark_id] = [];
+    const { bookmark_id, ...coll } = row;
+    acc[row.bookmark_id].push(coll);
+    return acc;
+  }, {} as Record<string, any[]>);
+
+  // Combine
+  const bookmarksWithData = bookmarks.map((b) => ({
     ...b,
-    tags: tagsByBookmarkId[b.id] || []
+    tags: tagsByBookmarkId[b.id] || [],
+    collections: collectionsByBookmarkId[b.id] || []
   }));
 
-  res.json(bookmarksWithTags);
+  res.json(bookmarksWithData);
 });
 
-async function createBookmark(url: string) {
-  try {
-    new URL(url);
-  } catch (e) {
-    return { id: null, title: url, success: false, error: "Invalid URL format" };
-  }
+async function createBookmark(url: string, options: { collectionIds?: string[] } = {}) {
+   try {
+     new URL(url);
+   } catch (e) {
+     return { id: null, title: url, success: false, error: "Invalid URL format" };
+   }
 
-  // 0. Check if already exists
-  const existing = db
-    .prepare("SELECT id, title FROM bookmarks WHERE url = ? AND is_deleted = 0")
-    .get(url) as any;
+   // 0. Check if already exists
+   const existing = db
+     .prepare("SELECT id, title FROM bookmarks WHERE url = ? AND is_deleted = 0")
+     .get(url) as any;
 
-  if (existing) {
-    return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
-  }
+   if (existing) {
+     return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
+   }
 
-  // Insert immediately with basic info
-  const bookmarkId = uuidv4();
-  let domain = "";
-  try {
-    domain = new URL(url).hostname;
-  } catch (e) {}
+   // Insert immediately with basic info
+   const bookmarkId = uuidv4();
+   let domain = "";
+   try {
+     domain = new URL(url).hostname;
+   } catch (e) {}
 
-  const insertBookmark = db.prepare(`
-    INSERT INTO bookmarks (id, url, title, domain)
-    VALUES (?, ?, ?, ?)
-  `);
+   const insertBookmark = db.prepare(`
+     INSERT INTO bookmarks (id, url, title, domain)
+     VALUES (?, ?, ?, ?)
+   `);
 
-  insertBookmark.run(bookmarkId, url, url, domain);
+   insertBookmark.run(bookmarkId, url, url, domain);
 
-  return { id: bookmarkId, title: url, success: true, needsRefresh: true };
-}
+   // Assign collections (default to Inbox)
+   const collectionIds = options.collectionIds && options.collectionIds.length > 0
+     ? options.collectionIds
+     : ['inbox-collection'];
 
-router.get("/bookmarks/:id", (req, res) => {
-  const { id } = req.params;
-  const bookmark = db.prepare(`
-    SELECT b.*, c.name as category_name, c.color as category_color 
-    FROM bookmarks b
-    LEFT JOIN categories c ON b.category_id = c.id
-    WHERE b.id = ? AND b.is_deleted = 0
-  `).get(id) as any;
+   // Set legacy category_id to first collection for backward compatibility
+   db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], bookmarkId);
 
-  if (!bookmark) {
-    return res.status(404).json({ error: "Bookmark not found" });
-  }
+   // Create bookmark-collection links
+   const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+   for (const colId of collectionIds) {
+     // Verify collection exists (skip invalid)
+     const coll = db.prepare("SELECT id FROM collections WHERE id = ?").get(colId);
+     if (coll) {
+       insertLink.run(bookmarkId, colId);
+     }
+   }
 
-  const tags = db.prepare(`
-    SELECT t.* FROM tags t
-    JOIN bookmark_tags bt ON t.id = bt.tag_id
-    WHERE bt.bookmark_id = ?
-  `).all(id);
+   return { id: bookmarkId, title: url, success: true, needsRefresh: true, collectionIds };
+ }
 
-  res.json({ ...bookmark, tags });
-});
+ router.get("/bookmarks/:id", async (req, res) => {
+   const { id } = req.params;
+   const bookmark = db.prepare(`
+     SELECT b.*, c.name as category_name, c.color as category_color 
+     FROM bookmarks b
+     LEFT JOIN categories c ON b.category_id = c.id
+     WHERE b.id = ? AND b.is_deleted = 0
+   `).get(id) as any;
 
-router.post("/bookmarks", async (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL is required" });
+   if (!bookmark) {
+     return res.status(404).json({ error: "Bookmark not found" });
+   }
 
-  try {
-    const result = await createBookmark(url);
-    if (!result.success && result.error === "Invalid URL format") {
-      return res.status(400).json({ error: "Invalid URL format" });
-    }
-    res.json(result);
-  } catch (error: any) {
-    console.error("Error adding bookmark:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+   // Fetch tags
+   const tags = db.prepare(`
+     SELECT t.* FROM tags t
+     JOIN bookmark_tags bt ON t.id = bt.tag_id
+     WHERE bt.bookmark_id = ?
+   `).all(id);
+
+   // Fetch collections
+   const collections = db.prepare(`
+     SELECT c.* FROM collections c
+     JOIN bookmark_collections bc ON c.id = bc.collection_id
+     WHERE bc.bookmark_id = ?
+     ORDER BY c.name
+   `).all(id);
+
+   res.json({ ...bookmark, tags, collections });
+ });
+
+ router.post("/bookmarks", async (req, res) => {
+   const { url, collectionIds } = req.body;
+   if (!url) return res.status(400).json({ error: "URL is required" });
+
+   try {
+     const result = await createBookmark(url, { collectionIds });
+     if (!result.success && result.error === "Invalid URL format") {
+       return res.status(400).json({ error: "Invalid URL format" });
+     }
+     res.json(result);
+   } catch (error: any) {
+     console.error("Error adding bookmark:", error);
+     res.status(500).json({ error: error.message });
+   }
+ });
 
 router.post("/bookmarks/bulk", async (req, res) => {
   const { urls } = req.body;

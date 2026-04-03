@@ -49,10 +49,10 @@ export class ErrorBoundary extends Component<Props, State> {
                 <li>Pinned domains</li>
                 <li>Sidebar and inspector widths</li>
               </ul>
-              <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 mb-6 bg-emerald-50 p-3 rounded border border-emerald-100">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-                Your bookmarks, categories, and tags are safely stored in the database and will NOT be deleted.
-              </div>
+               <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 mb-6 bg-emerald-50 p-3 rounded border border-emerald-100">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                 Your bookmarks, collections, and tags are safely stored in the database and will NOT be deleted.
+               </div>
 
               <button
                 onClick={() => {

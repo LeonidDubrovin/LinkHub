@@ -1,19 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
+import { Icon } from './Icon';
+import { Collection } from '../types';
 
 interface AddBookmarkModalProps {
   isOpen: boolean;
   isLoading: boolean;
   onClose: () => void;
-  onSubmit: (urls: string) => void;
+  onSubmit: (urls: string, collectionIds?: string[]) => void;
+  collections?: Collection[];
+  defaultCollectionIds?: string[];
 }
 
-export function AddBookmarkModal({ isOpen, isLoading, onClose, onSubmit }: AddBookmarkModalProps) {
+export function AddBookmarkModal({ 
+  isOpen, 
+  isLoading, 
+  onClose, 
+  onSubmit, 
+  collections = [],
+  defaultCollectionIds = [] 
+}: AddBookmarkModalProps) {
   const [newUrls, setNewUrls] = useState("");
+  const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>(defaultCollectionIds);
 
   useEffect(() => {
     if (isOpen) {
       setNewUrls("");
+      setSelectedCollectionIds(defaultCollectionIds);
       navigator.clipboard.readText().then(text => {
         if (text) {
           const lines = text.split('\n').map(l => l.trim()).filter(l => l);
@@ -26,15 +39,18 @@ export function AddBookmarkModal({ isOpen, isLoading, onClose, onSubmit }: AddBo
         console.error("Failed to read clipboard", err);
       });
     }
-  }, [isOpen]);
+  }, [isOpen, defaultCollectionIds]);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUrls) return;
-    onSubmit(newUrls);
+    // If no collection selected, we don't pass anything (backend defaults to Inbox)
+    const collectionIds = selectedCollectionIds.length > 0 ? selectedCollectionIds : undefined;
+    onSubmit(newUrls, collectionIds);
     setNewUrls("");
+    setSelectedCollectionIds([]);
   };
 
   return (
@@ -49,7 +65,7 @@ export function AddBookmarkModal({ isOpen, isLoading, onClose, onSubmit }: AddBo
             <X size={20} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-6">
+         <form onSubmit={handleSubmit} className="p-6">
           <div className="mb-4">
             <label className="block text-sm font-medium text-slate-700 mb-1">
               URLs (one per line)
@@ -64,9 +80,39 @@ export function AddBookmarkModal({ isOpen, isLoading, onClose, onSubmit }: AddBo
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
             />
             <p className="text-xs text-slate-500 mt-2">
-              Paste multiple URLs separated by new lines. We'll automatically fetch titles, descriptions, and use AI to categorize them.
+              Paste multiple URLs separated by new lines. We'll automatically fetch titles and descriptions.
             </p>
           </div>
+
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Collections
+            </label>
+            <div className="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">
+              {collections.filter(c => !c.parent_id).map(c => (
+                <label key={c.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedCollectionIds.includes(c.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedCollectionIds(prev => [...prev, c.id]);
+                      } else {
+                        setSelectedCollectionIds(prev => prev.filter(id => id !== c.id));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <Icon name={c.icon || "Folder"} size={14} color={c.color} />
+                  <span className="truncate">{c.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500 mt-2">
+              If none selected, bookmark will be added to Inbox.
+            </p>
+          </div>
+
           <div className="flex justify-end gap-2 mt-6">
             <button
               type="button"

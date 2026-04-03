@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut } from "electron";
+import { app, BrowserWindow, globalShortcut, Menu } from "electron";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -99,10 +99,9 @@ async function createWindow() {
    // Force open DevTools for debugging
    // mainWindow.webContents.openDevTools();
 
-  // Add a context menu to easily open DevTools
-  mainWindow.webContents.on('context-menu', (e, props) => {
-    const { Menu } = require('electron');
-    const menu = Menu.buildFromTemplate([
+   // Add a context menu to easily open DevTools
+   mainWindow.webContents.on('context-menu', (e, props) => {
+     const menu = Menu.buildFromTemplate([
       {
         label: 'Inspect Element',
         click: () => {

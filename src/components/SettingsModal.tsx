@@ -387,56 +387,56 @@ export function SettingsModal({
                  <div>
                    <h3 className="text-sm font-medium text-slate-900 mb-3">Local Heuristics Rules</h3>
                    <p className="text-sm text-slate-500 mb-4">
-                     Define domain-to-category mappings for automatic categorization when LLM is unavailable or disabled.
-                   </p>
-                   
-                   <div className="space-y-3">
-                     {Object.entries(localHeuristics.domainCategoryRules).map(([domain, category]) => (
-                       <div key={domain} className="flex items-center gap-2">
-                         <input
-                           type="text"
-                           value={domain}
-                           onChange={(e) => handleDomainRuleChange(domain, e.target.value)}
-                           placeholder="domain.com"
-                           className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                         />
-                         <span className="text-slate-400">→</span>
-                         <input
-                           type="text"
-                           value={category}
-                           onChange={(e) => handleDomainRuleChange(domain, e.target.value)}
-                           placeholder="Category Name"
-                           className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                         />
-                         <button
-                           onClick={() => handleRemoveDomainRule(domain)}
-                           className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                           title="Remove rule"
-                         >
-                           <X size={16} />
-                         </button>
-                       </div>
-                     ))}
-                     
-                     <button
-                       onClick={handleAddDomainRule}
-                       className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600 rounded-lg font-medium transition-colors"
-                     >
-                       + Add Domain Rule
-                     </button>
-                   </div>
+                      Define domain-to-collection mappings for automatic categorization when LLM is unavailable or disabled.
+                    </p>
+                    
+                    <div className="space-y-3">
+                      {Object.entries(localHeuristics.domainCategoryRules).map(([domain, collection]) => (
+                        <div key={domain} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={domain}
+                            onChange={(e) => handleDomainRuleChange(domain, e.target.value)}
+                            placeholder="domain.com"
+                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <span className="text-slate-400">→</span>
+                          <input
+                            type="text"
+                            value={collection}
+                            onChange={(e) => handleDomainRuleChange(domain, e.target.value)}
+                            placeholder="Collection Name"
+                            className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          <button
+                            onClick={() => handleRemoveDomainRule(domain)}
+                            className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                            title="Remove rule"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                      
+                      <button
+                        onClick={handleAddDomainRule}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600 rounded-lg font-medium transition-colors"
+                      >
+                        + Add Domain Rule
+                      </button>
+                    </div>
 
-                   <div className="mt-6 p-4 bg-slate-50 rounded-lg">
-                     <h4 className="text-sm font-medium text-slate-800 mb-2">Existing Categories</h4>
-                     <p className="text-xs text-slate-500 mb-3">
-                       Make sure these match categories in your database exactly:
-                     </p>
-                     <div className="flex flex-wrap gap-2">
-                       {['Articles', 'Design', 'Programming', 'Videos'].map(cat => (
-                         <span key={cat} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600">
-                           {cat}
-                         </span>
-                       ))}
+                    <div className="mt-6 p-4 bg-slate-50 rounded-lg">
+                      <h4 className="text-sm font-medium text-slate-800 mb-2">Existing Collections</h4>
+                      <p className="text-xs text-slate-500 mb-3">
+                        Make sure these match collection names in your database exactly:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {['Articles', 'Design', 'Programming', 'Videos', 'Library', 'Inbox'].map(cat => (
+                          <span key={cat} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600">
+                            {cat}
+                          </span>
+                        ))}
                      </div>
                    </div>
                  </div>

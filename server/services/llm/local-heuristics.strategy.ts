@@ -6,40 +6,36 @@ export class LocalHeuristicsStrategy implements ICategorizationStrategy {
     return "Local Heuristics";
   }
 
-  async categorize(data: BookmarkData): Promise<CategorizationResult> {
-    const config = getConfig();
-    const rules = (config.localHeuristics?.domainCategoryRules as Record<string, string>) || {};
+   async categorize(data: BookmarkData): Promise<CategorizationResult> {
+     const config = getConfig();
+     const rules = (config.localHeuristics?.domainCategoryRules as Record<string, string>) || {};
 
-    if (!data.domain) {
-      return { tags: [] };
-    }
+     if (!data.domain) {
+       return { tags: [] };
+     }
 
-    // Try exact domain match
-    const categoryName = rules[data.domain] || rules[`www.${data.domain}`];
+     // Try exact domain match
+     const collectionName = rules[data.domain] || rules[`www.${data.domain}`];
 
-    if (categoryName) {
-      return {
-        categoryId: undefined, // Will be resolved by categorizer
-        newCategoryName: categoryName,
-        parentCategoryId: undefined,
-        tags: []
-      };
-    }
+     if (collectionName) {
+       return {
+         collectionNames: [collectionName],
+         tags: []
+       };
+     }
 
-    // Try suffix matching (e.g., youtube.com matches *.youtube.com)
-    for (const [ruleDomain, category] of Object.entries(rules)) {
-      if (data.domain.endsWith(ruleDomain) && data.domain !== ruleDomain) {
-        return {
-          categoryId: undefined,
-          newCategoryName: category,
-          parentCategoryId: undefined,
-          tags: []
-        };
-      }
-    }
+     // Try suffix matching (e.g., youtube.com matches *.youtube.com)
+     for (const [ruleDomain, collection] of Object.entries(rules)) {
+       if (data.domain.endsWith(ruleDomain) && data.domain !== ruleDomain) {
+         return {
+           collectionNames: [collection],
+           tags: []
+         };
+       }
+     }
 
-    return { tags: [] };
-  }
+     return { tags: [] };
+   }
 
   async testConnection(): Promise<boolean> {
     // Local heuristics always "connected"

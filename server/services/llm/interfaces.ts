@@ -8,9 +8,9 @@ export interface BookmarkData {
 }
 
 export interface CategorizationResult {
-  categoryId?: string;
-  newCategoryName?: string;
-  parentCategoryId?: string;
+  // Collection IDs (existing) or names to create
+  collectionIds?: string[];  // existing collection IDs
+  collectionNames?: string[]; // names to create/use in default space
   tags: string[];
 }
 
@@ -37,7 +37,7 @@ export interface ICategorizationStrategy {
 export interface CategorizationServiceResult {
   success: boolean;
   source: 'llm' | 'local' | null;
-  categoryId?: string;
+  collectionIds?: string[]; // assigned collection IDs
   tags: string[];
   error?: string;
 }

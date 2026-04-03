@@ -1,10 +1,22 @@
-export interface Category {
+export interface Space {
   id: string;
   name: string;
   icon: string;
   color: string;
+  created_at: string;
+  collectionCount?: number;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  space_id: string;
   parent_id: string | null;
   created_at: string;
+  bookmarkCount?: number;
+  children?: Collection[];
 }
 
 export interface Tag {
@@ -24,13 +36,11 @@ export interface Bookmark {
   description: string;
   cover_image_url: string;
   content_text: string;
-  category_id: string;
   domain: string;
   images_json: string | null;
-  category_name?: string;
-  category_color?: string;
   created_at: string;
   updated_at: string;
   is_deleted: number;
   tags: Tag[];
+  collections?: Collection[]; // New: multi-collection support
 }
