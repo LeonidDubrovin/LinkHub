@@ -19,6 +19,10 @@ export interface Collection {
   children?: Collection[];
 }
 
+export interface SpaceWithCollections extends Space {
+  collections: Collection[];
+}
+
 export interface Tag {
   id: string;
   name: string;

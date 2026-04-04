@@ -14,6 +14,15 @@ interface ConfirmDialogState {
   onConfirm: () => void;
 }
 
+interface CreateBookmarkResponse {
+  id?: string;
+  title?: string;
+  success: boolean;
+  exists?: boolean;
+  needsRefresh?: boolean;
+  error?: string;
+}
+
 interface UseBookmarksParams {
   setToast: React.Dispatch<React.SetStateAction<ToastState | null>>;
   setConfirmDialog: React.Dispatch<React.SetStateAction<ConfirmDialogState>>;
@@ -125,26 +134,26 @@ const handleAddBookmark = React.useCallback(async (newUrls: string, collectionId
             results.push(data);
         }
 
-        const existingUrls = results.filter((r: any) => r.exists);
-        const addedUrls = results.filter((r: any) => r.success);
+        const existingUrls = results.filter((r: CreateBookmarkResponse) => r.exists);
+        const addedUrls = results.filter((r: CreateBookmarkResponse) => r.success);
 
         let message = `Added ${addedUrls.length} new bookmarks.`;
         if (existingUrls.length > 0) {
-            message += ` ${existingUrls.length} already existed.`;
+          message += ` ${existingUrls.length} already existed.`;
         }
 
         setToast({ message, type: addedUrls.length > 0 ? 'success' : 'info' });
 
         if (addedUrls.length > 0) {
-            setIsAdding(false);
-            await fetchBookmarks();
-            fetchCollections();
-            fetchTags();
-            fetchDomains();
+          setIsAdding(false);
+          await fetchBookmarks();
+          fetchCollections();
+          fetchTags();
+          fetchDomains();
 
-            const refreshPromises = addedUrls
-                .filter((r: any) => r.needsRefresh)
-                .map((r: any) => handleRefreshBookmark(r.id, true));
+          const refreshPromises = addedUrls
+              .filter((r: CreateBookmarkResponse) => r.needsRefresh)
+              .map((r: CreateBookmarkResponse) => handleRefreshBookmark(r.id, true));
 
             await Promise.all(refreshPromises);
             await fetchBookmarks();

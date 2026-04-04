@@ -12,6 +12,10 @@ import { format } from "date-fns";
 import { cn } from "./lib/utils";
 import { getDomain, getYouTubeId } from './utils';
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error) || 'An unknown error occurred';
+}
+
 export default function App() {
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -220,7 +224,7 @@ export default function App() {
       });
       if (res.ok) { setNewCollectionName(""); setIsCreatingCollection(false); fetchCollections(); setToast({ message: "Collection created", type: "success" }); }
       else { const err = await res.json().catch(() => ({})); setToast({ message: `Failed: ${err.error || 'unknown error'}`, type: "error" }); }
-    } catch (error: any) { setToast({ message: error.message || "Failed to create collection", type: "error" }); }
+     } catch (error) { setToast({ message: getErrorMessage(error) || "Failed to create collection", type: "error" }); }
   }, [newCollectionName, spaces, fetchCollections]);
 
   const handleDeleteCollection = useCallback(async (collectionId: string) => {
@@ -398,7 +402,7 @@ export default function App() {
         document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
         setToast({ message: "Backup downloaded successfully", type: "success" });
       } catch (downloadError) { console.warn("Download failed, falling back to clipboard:", downloadError); await navigator.clipboard.writeText(jsonString); setToast({ message: "Backup copied to clipboard (download blocked by browser)", type: "success" }); }
-    } catch (error: any) { console.error("Backup error:", error); setToast({ message: error.message || "Failed to generate backup", type: "error" }); }
+    } catch (error) { console.error("Backup error:", error); setToast({ message: getErrorMessage(error) || "Failed to generate backup", type: "error" }); }
   }, []);
 
   const handleRestore = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -416,7 +420,7 @@ export default function App() {
           setToast({ message: "Backup restored successfully", type: "success" });
           setSelectedBookmark(null); setSelectedCollectionId(null); setSelectedTagId(null); setSelectedDomain(null);
           fetchBookmarks(); fetchCollections(); fetchTags(); fetchDomains();
-        } catch (error: any) { console.error("Restore error:", error); setToast({ message: error.message || "Failed to restore backup", type: "error" }); }
+         } catch (error) { console.error("Restore error:", error); setToast({ message: getErrorMessage(error) || "Failed to restore backup", type: "error" }); }
         finally { e.target.value = ""; }
       }
     });

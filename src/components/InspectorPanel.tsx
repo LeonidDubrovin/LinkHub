@@ -3,6 +3,7 @@ import { BookOpen, Globe, Shield, X, RefreshCw, Trash2, ExternalLink } from "luc
 import { format } from "date-fns";
 import { cn } from "../lib/utils";
 import { getDomain } from "../utils";
+import { Bookmark, Collection } from "../types";
 
 interface ReaderContent {
   title: string;
@@ -11,7 +12,7 @@ interface ReaderContent {
 }
 
 interface InspectorPanelProps {
-  selectedBookmark: any;
+  selectedBookmark: Bookmark | null;
   isInspectorOpen: boolean;
   inspectorWidth: number;
   isDragging: boolean;
@@ -23,12 +24,12 @@ interface InspectorPanelProps {
   refreshingBookmarkIds: Set<string>;
   isEditingCollections: boolean;
   selectedCollectionIdsForEdit: string[];
-  allCollectionsTree: any[];
+  allCollectionsTree: Collection[];
   collectionBookmarkCounts: Map<string, number>;
   onTabChange: (tab: "details" | "reader" | "web" | "video") => void;
   onClose: () => void;
   onResizeStart: (e: React.MouseEvent) => void;
-  onLoadReaderView: (bookmark: any) => void;
+  onLoadReaderView: (bookmark: Bookmark) => void;
   onWebPreviewModeChange: (mode: "proxy" | "direct") => void;
   onWebPreviewKeyChange: (key: number) => void;
   onRefreshBookmark: (id: string) => void;
@@ -36,7 +37,7 @@ interface InspectorPanelProps {
   onUpdateBookmarkCollections: (bookmarkId: string, collectionIds: string[]) => void;
   onToggleEditingCollections: () => void;
   onSelectCollectionForEdit: (id: string, checked: boolean) => void;
-  renderCollectionCheckbox: (coll: any, level: number) => React.ReactNode;
+  renderCollectionCheckbox: (coll: Collection, level: number) => React.ReactNode;
   getYouTubeId: (url: string) => string | null;
 }
 

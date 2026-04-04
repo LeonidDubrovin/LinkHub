@@ -97,9 +97,10 @@ export function useCollections(
         const err = await res.json().catch(() => ({}));
         setToast({ message: `Failed: ${err.error || 'unknown error'}`, type: "error" });
       }
-    } catch (error: any) {
-      setToast({ message: error.message || "Failed to create collection", type: "error" });
-    }
+     } catch (error: unknown) {
+       const message = error instanceof Error ? error.message : "Failed to create collection";
+       setToast({ message, type: "error" });
+     }
   };
 
   const handleUpdateBookmarkCollections = async (bookmarkId: string, collectionIds: string[]) => {

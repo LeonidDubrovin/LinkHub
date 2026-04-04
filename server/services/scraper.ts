@@ -63,16 +63,17 @@ export async function fetchBookmarkData(url: string) {
   }
     
   const extractedImages = new Set<string>();
+  const MIN_IMAGE_SIZE = 100;
 
-// YouTube specific handling
-    if (url.includes('youtube.com/') || url.includes('youtu.be/')) {
-      const result = await handleYouTubeMetadata(url, cover_image_url, extractedImages);
-      cover_image_url = result.cover_image_url;
-      title = result.title;
-      description = result.description;
-    }
+  // YouTube specific handling
+  if (url.includes('youtube.com/') || url.includes('youtu.be/')) {
+    const result = await handleYouTubeMetadata(url, cover_image_url, extractedImages);
+    cover_image_url = result.cover_image_url;
+    title = result.title;
+    description = result.description;
+  }
 
-    if (cover_image_url) extractedImages.add(cover_image_url);
+  if (cover_image_url) extractedImages.add(cover_image_url);
 
   // Extract multiple og:images if available
   $('meta[property="og:image"]').each((i, el) => {
@@ -93,30 +94,38 @@ export async function fetchBookmarkData(url: string) {
         // If URL parsing fails, skip this image
         return;
       }
-      
+
       const width = $(el).attr("width");
       const height = $(el).attr("height");
       const className = $(el).attr("class") || "";
       const alt = $(el).attr("alt") || "";
-      
-      const isJunk = 
-        src.includes("favicon") || 
-        src.includes("icon") || 
-        src.includes("logo") || 
-        src.includes("spinner") ||
-        src.includes("avatar") ||
-        src.includes("badge") ||
-        src.includes("emoji") ||
-        src.includes("tracker") ||
-        src.includes("pixel") ||
+
+      const srcLower = src.toLowerCase();
+      const classLower = className.toLowerCase();
+      const altLower = alt.toLowerCase();
+
+      const isJunk =
+        srcLower.includes("favicon") ||
+        srcLower.includes("icon") ||
+        srcLower.includes("logo") ||
+        srcLower.includes("spinner") ||
+        srcLower.includes("avatar") ||
+        srcLower.includes("badge") ||
+        srcLower.includes("emoji") ||
+        srcLower.includes("tracker") ||
+        srcLower.includes("pixel") ||
         src.endsWith(".svg") ||
         src.endsWith(".gif") ||
         src.startsWith("data:image") ||
-        className.toLowerCase().includes("logo") ||
-        className.toLowerCase().includes("icon") ||
-        alt.toLowerCase().includes("logo");
-        
-      const isTooSmall = (width && parseInt(width) < 100) || (height && parseInt(height) < 100);
+        classLower.includes("logo") ||
+        classLower.includes("icon") ||
+        altLower.includes("logo");
+
+      const widthNum = width ? parseInt(width, 10) : NaN;
+      const heightNum = height ? parseInt(height, 10) : NaN;
+      const isTooSmall =
+        (!isNaN(widthNum) && widthNum < MIN_IMAGE_SIZE) ||
+        (!isNaN(heightNum) && heightNum < MIN_IMAGE_SIZE);
 
       if (src.startsWith("http") && !isJunk && !isTooSmall) {
         extractedImages.add(src);

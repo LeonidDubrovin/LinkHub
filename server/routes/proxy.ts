@@ -25,7 +25,7 @@ function isSafeProxyUrl(urlStr: string): boolean {
 const router = express.Router();
 
 router.get("/proxy", async (req, res) => {
-  const url = req.query.url as string;
+  const url = typeof req.query.url === 'string' ? req.query.url : null;
   if (!url) return res.status(400).send("URL is required");
   if (!isSafeProxyUrl(url)) return res.status(403).send("Access to internal addresses is not allowed");
 

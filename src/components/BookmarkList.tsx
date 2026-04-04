@@ -5,6 +5,9 @@ import { DynamicCover } from "./DynamicCover";
 import { getDomain } from "../utils";
 import { Bookmark, Collection, Tag } from "../types";
 
+type SortBy = "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc";
+type FilterBy = "all" | "has_images" | "has_summary" | "has_content";
+
 // Constants for UI dimensions
 const HEADER_HEIGHT = 56;
 const SEARCH_INPUT_MIN_WIDTH = 150;
@@ -22,8 +25,8 @@ interface BookmarkListProps {
   selectedBookmark: Bookmark | null;
   refreshingBookmarkIds: Set<string>;
   searchQuery: string;
-  sortBy: string;
-  filterBy: string;
+  sortBy: SortBy;
+  filterBy: FilterBy;
   selectedCollectionId: string | null;
   selectedTagId: string | null;
   selectedDomain: string | null;
@@ -33,8 +36,8 @@ interface BookmarkListProps {
   onToggleSelectAll: () => void;
   onToggleBookmarkSelection: (id: string, e: React.MouseEvent) => void;
   onSearchChange: (v: string) => void;
-  onSortChange: (v: any) => void;
-  onFilterChange: (v: any) => void;
+  onSortChange: (v: SortBy) => void;
+  onFilterChange: (v: FilterBy) => void;
   onViewModeChange: (v: "list" | "grid") => void;
   onItemSizeChange: (v: "small" | "medium" | "large") => void;
   onBulkDelete: () => void;

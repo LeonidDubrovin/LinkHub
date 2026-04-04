@@ -2,11 +2,12 @@ import React from "react";
 import { cn } from "../lib/utils";
 import { Icon } from "./Icon";
 import { Globe, Settings, Plus, Pin, PinOff, BookOpen } from "lucide-react";
+import { SpaceWithCollections, Domain, Tag, Collection } from "../types";
 
 interface SidebarProps {
-  treeSpaces: any[];
-  domains: any[];
-  tags: any[];
+  treeSpaces: SpaceWithCollections[];
+  domains: Domain[];
+  tags: Tag[];
   pinnedDomains: string[];
   selectedCollectionId: string | null;
   selectedTagId: string | null;
@@ -20,7 +21,7 @@ interface SidebarProps {
   onSelectTag: (id: string | null) => void;
   onSelectDomain: (domain: string | null) => void;
   togglePinDomain: (domain: string, e: React.MouseEvent) => void;
-  renderCollections: (colls: any[], level: number) => React.ReactNode;
+  renderCollections: (colls: Collection[], level: number) => React.ReactNode;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
 }
