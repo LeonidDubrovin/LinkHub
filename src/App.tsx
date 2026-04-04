@@ -131,13 +131,27 @@ export default function App() {
     }
   }, [selectedBookmark?.id]);
 
-   useEffect(() => {
-     fetchSpaces();
-     fetchCollections();
-     fetchTags();
-     fetchDomains();
-     fetchBookmarks();
-   }, []);
+    const [isInitializing, setIsInitializing] = useState(true);
+
+    useEffect(() => {
+      async function initializeApp() {
+        try {
+          await Promise.all([
+            fetchSpaces(),
+            fetchCollections(),
+            fetchTags(),
+            fetchDomains(),
+            fetchBookmarks()
+          ]);
+        } catch (error) {
+          console.error("Failed to initialize app:", error);
+          setToast({ message: "Failed to load data. Please reload.", type: "error" });
+        } finally {
+          setIsInitializing(false);
+        }
+      }
+      initializeApp();
+    }, []);
 
    useEffect(() => {
      fetchBookmarks();
@@ -219,9 +233,16 @@ export default function App() {
    const treeSpaces = React.useMemo(() => {
      if (spaces.length === 0 || collections.length === 0) return [];
 
+     // Sort spaces: Inbox first, then by name
+     const sortedSpaces = [...spaces].sort((a, b) => {
+       if (a.id === 'inbox-space') return -1;
+       if (b.id === 'inbox-space') return 1;
+       return a.name.localeCompare(b.name);
+     });
+
      // Group collections by space
      const collectionsBySpace = new Map<string, Collection[]>();
-     for (const space of spaces) {
+     for (const space of sortedSpaces) {
        const spaceColls = collections.filter(c => c.space_id === space.id);
        collectionsBySpace.set(space.id, spaceColls);
      }
@@ -236,7 +257,7 @@ export default function App() {
        }));
      };
 
-     return spaces.map(space => ({
+     return sortedSpaces.map(space => ({
        ...space,
        collections: buildTree(space.id)
      }));
@@ -425,31 +446,12 @@ export default function App() {
         return;
       }
 
-      let targetSpaceId: string | null = null;
+      // After global loader, spaces must be available. Use Inbox if present, else first space.
+      const inboxSpace = spaces.find(s => s.id === 'inbox-space');
+      const targetSpace = inboxSpace || spaces[0];
 
-      // Use loaded spaces if available
-      if (spaces.length > 0) {
-        const libSpace = spaces.find(s => s.name === 'Library');
-        targetSpaceId = libSpace?.id || spaces[0]?.id;
-      } else {
-        // Fallback: fetch spaces to find Library
-        try {
-          const res = await fetch("/api/spaces");
-          if (res.ok) {
-            const spacesData = await res.json();
-            if (Array.isArray(spacesData) && spacesData.length > 0) {
-              const libSpace = spacesData.find((s: any) => s.name === 'Library');
-              targetSpaceId = libSpace?.id || spacesData[0]?.id;
-              setSpaces(spacesData); // cache for future
-            }
-          }
-        } catch (e) {
-          console.error("Failed to fetch spaces", e);
-        }
-      }
-
-      if (!targetSpaceId) {
-        setToast({ message: "No space available. Please refresh the page.", type: "error" });
+      if (!targetSpace) {
+        setToast({ message: "No space available. Please reload the page.", type: "error" });
         return;
       }
 
@@ -459,7 +461,7 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: newCollectionName.trim(),
-            space_id: targetSpaceId,
+            space_id: targetSpace.id,
             icon: "Folder",
             color: null,
             parent_id: null
@@ -998,8 +1000,17 @@ export default function App() {
     }
   });
 
-  return (
-    <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", isDragging && "select-none cursor-col-resize")}>
+   return (
+     <>
+       {isInitializing && (
+         <div className="fixed inset-0 bg-white/90 backdrop-blur-sm flex items-center justify-center z-50">
+           <div className="text-center">
+             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+             <p className="text-slate-600 font-medium">Loading LinkHub...</p>
+           </div>
+         </div>
+       )}
+       <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", isDragging && "select-none cursor-col-resize")}>
       {/* SIDEBAR */}
       <div className="w-64 bg-[#f1f3f5] border-r border-slate-200 flex flex-col flex-shrink-0">
         <div className="p-4 flex items-center justify-between">
@@ -1865,7 +1876,8 @@ export default function App() {
         message={confirmDialog.message}
         onConfirm={confirmDialog.onConfirm}
         onCancel={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
-      />
-    </div>
+       />
+      </div>
+    </>
   );
 }

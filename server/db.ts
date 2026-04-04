@@ -174,37 +174,32 @@ const catCount = db
      }
 
      console.log("Running spaces & collections migration...");
-     db.transaction(() => {
-       // 1. Create Inbox space (system)
-       db.prepare("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
-         .run('inbox-space', 'Inbox', 'Inbox', '#6b7280');
+      db.transaction(() => {
+        // 1. Create Inbox space (system) - the only default space
+        db.prepare("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
+          .run('inbox-space', 'Inbox', 'Inbox', '#6b7280');
 
-       // 2. Create Inbox collection in Inbox space
-       db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES (?, ?, ?, ?, ?)")
-         .run('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space');
+        // 2. Create Inbox collection in Inbox space (for unassigned bookmarks)
+        db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES (?, ?, ?, ?, ?)")
+          .run('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space');
 
-       // 3. Create "Library" space for migrated categories
-       const librarySpaceId = uuidv4();
-       db.prepare("INSERT INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
-         .run(librarySpaceId, 'Library', 'Library', '#3b82f6');
-
-       // 4. Migrate existing categories to collections (preserve IDs)
-       const oldCategories = db.prepare("SELECT * FROM categories").all() as any[];
-       const insertCollection = db.prepare(`
-         INSERT OR IGNORE INTO collections (id, name, icon, color, space_id, parent_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-       `);
-       for (const cat of oldCategories) {
-         insertCollection.run(
-           cat.id,
-           cat.name,
-           cat.icon || 'Folder',
-           cat.color || '#' + Math.floor(Math.random()*0xffffff).toString(16).padStart(6, '0'),
-           librarySpaceId,
-           cat.parent_id || null,
-           cat.created_at
-         );
-       }
+        // 3. Migrate existing categories to collections (preserve IDs) - all go to Inbox space
+        const oldCategories = db.prepare("SELECT * FROM categories").all() as any[];
+        const insertCollection = db.prepare(`
+          INSERT OR IGNORE INTO collections (id, name, icon, color, space_id, parent_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const cat of oldCategories) {
+          insertCollection.run(
+            cat.id,
+            cat.name,
+            cat.icon || 'Folder',
+            cat.color || '#' + Math.floor(Math.random()*0xffffff).toString(16).padStart(6, '0'),
+            'inbox-space',  // All migrated collections go to Inbox space
+            cat.parent_id || null,
+            cat.created_at
+          );
+        }
 
        // 5. Migrate bookmarks to bookmark_collections
        const bookmarks = db.prepare("SELECT id, category_id FROM bookmarks WHERE is_deleted = 0").all() as any[];
