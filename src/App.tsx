@@ -233,16 +233,19 @@ export default function App() {
    const treeSpaces = React.useMemo(() => {
      if (spaces.length === 0 || collections.length === 0) return [];
 
-     // Sort spaces: Inbox first, then by name
+     // Sort spaces: Inbox first, then alphabetical
      const sortedSpaces = [...spaces].sort((a, b) => {
        if (a.id === 'inbox-space') return -1;
        if (b.id === 'inbox-space') return 1;
        return a.name.localeCompare(b.name);
      });
 
+     // Filter out Library space (deprecated) and any other hidden system spaces
+     const visibleSpaces = sortedSpaces.filter(space => space.name !== 'Library');
+
      // Group collections by space
      const collectionsBySpace = new Map<string, Collection[]>();
-     for (const space of sortedSpaces) {
+     for (const space of visibleSpaces) {
        const spaceColls = collections.filter(c => c.space_id === space.id);
        collectionsBySpace.set(space.id, spaceColls);
      }
@@ -257,7 +260,7 @@ export default function App() {
        }));
      };
 
-     return sortedSpaces.map(space => ({
+     return visibleSpaces.map(space => ({
        ...space,
        collections: buildTree(space.id)
      }));
@@ -553,17 +556,31 @@ export default function App() {
         setToast({ message: "Cannot move collection into its own descendant", type: "error" });
         return;
       }
+
+      // Find the dragged collection to preserve its current fields
+      const draggedColl = collections.find(c => c.id === draggedId);
+      if (!draggedColl) {
+        setToast({ message: "Collection not found", type: "error" });
+        return;
+      }
+
       try {
         const res = await fetch(`/api/collections/${draggedId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ parent_id: targetId })
+          body: JSON.stringify({
+            name: draggedColl.name,
+            icon: draggedColl.icon,
+            color: draggedColl.color,
+            parent_id: targetId
+          })
         });
         if (res.ok) {
           fetchCollections();
           setToast({ message: "Collection moved", type: "success" });
         } else {
-          setToast({ message: "Failed to move collection", type: "error" });
+          const err = await res.json().catch(() => ({}));
+          setToast({ message: `Failed: ${err.error || 'unknown error'}`, type: "error" });
         }
       } catch (error) {
         console.error("Move collection error:", error);
