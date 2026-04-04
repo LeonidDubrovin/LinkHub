@@ -98,16 +98,16 @@ export class CategorizationService {
          if (existing) {
            collectionIds.push(existing.id);
          } else {
-           // Create new collection in "Library" space
-           const librarySpace = db.prepare("SELECT id FROM spaces WHERE name = 'Library' LIMIT 1").get() as any;
-           if (!librarySpace) {
-             throw new Error("Library space not found");
-           }
-           const newId = uuidv4();
-           const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-           db.prepare(
-             "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
-           ).run(newId, name, "Folder", color, librarySpace.id, null);
+            // Create new collection in "Inbox" space
+            const inboxSpace = db.prepare("SELECT id FROM spaces WHERE name = 'Inbox' LIMIT 1").get() as any;
+            if (!inboxSpace) {
+              throw new Error("Inbox space not found");
+            }
+            const newId = uuidv4();
+            const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+            db.prepare(
+              "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
+            ).run(newId, name, "Folder", color, inboxSpace.id, null);
            collectionIds.push(newId);
          }
        }
@@ -158,7 +158,7 @@ export class CategorizationService {
    }
 
   async categorizeAll(onlyUntagged: boolean = true): Promise<{total: number, processed: number, failed: number, errors: string[]}> {
-    let query = "SELECT id FROM bookmarks WHERE is_deleted = 0 AND category_id IS NULL";
+    let query = "SELECT id FROM bookmarks WHERE is_deleted = 0 AND NOT EXISTS (SELECT 1 FROM bookmark_collections WHERE bookmark_id = bookmarks.id)";
     const params: any[] = [];
     
     if (onlyUntagged) {

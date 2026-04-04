@@ -14,8 +14,8 @@ export class OpenRouterStrategy implements ICategorizationStrategy {
   }
 
    async categorize(data: BookmarkData): Promise<CategorizationResult> {
-     // Fetch existing collection names from DB
-     const collections = db.prepare("SELECT id, name FROM collections").all() as { id: string; name: string }[];
+     // Fetch existing collection names from DB (limit to top 50 by usage)
+     const collections = db.prepare("SELECT c.id, c.name, COUNT(bc.bookmark_id) as usage_count FROM collections c LEFT JOIN bookmark_collections bc ON c.id = bc.collection_id GROUP BY c.id ORDER BY usage_count DESC LIMIT 50").all() as { id: string; name: string }[];
      const collectionNames = collections.map(c => c.name);
 
      const prompt = `
@@ -42,6 +42,7 @@ Return strictly valid JSON:
 
      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
        method: "POST",
+       signal: AbortSignal.timeout(30000),
        headers: {
          "Authorization": `Bearer ${this.config.apiKey}`,
          "Content-Type": "application/json",

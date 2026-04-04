@@ -26,7 +26,7 @@ export class LocalHeuristicsStrategy implements ICategorizationStrategy {
 
      // Try suffix matching (e.g., youtube.com matches *.youtube.com)
      for (const [ruleDomain, collection] of Object.entries(rules)) {
-       if (data.domain.endsWith(ruleDomain) && data.domain !== ruleDomain) {
+       if (data.domain.endsWith(`.${ruleDomain}`)) {
          return {
            collectionNames: [collection],
            tags: []

@@ -185,27 +185,29 @@ export default function App() {
     }
   }, [isDragging, inspectorWidth]);
 
-   const fetchSpaces = async () => {
-     try {
-       const res = await fetch("/api/spaces");
-       const data = await res.json();
-       setSpaces(Array.isArray(data) ? data : []);
-     } catch (e) {
-       console.error("Failed to fetch spaces", e);
-       setSpaces([]);
-     }
-   };
+    const fetchSpaces = async () => {
+      try {
+        const res = await fetch("/api/spaces");
+        if (!res.ok) throw new Error(`Failed to fetch spaces: ${res.status}`);
+        const data = await res.json();
+        setSpaces(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("Failed to fetch spaces", e);
+        setSpaces([]);
+      }
+    };
 
-   const fetchCollections = async () => {
-     try {
-       const res = await fetch("/api/collections");
-       const data = await res.json();
-       setCollections(Array.isArray(data) ? data : []);
-     } catch (e) {
-       console.error("Failed to fetch collections", e);
-       setCollections([]);
-     }
-   };
+    const fetchCollections = async () => {
+      try {
+        const res = await fetch("/api/collections");
+        if (!res.ok) throw new Error(`Failed to fetch collections: ${res.status}`);
+        const data = await res.json();
+        setCollections(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("Failed to fetch collections", e);
+        setCollections([]);
+      }
+    };
 
   const fetchTags = async () => {
     try {
@@ -240,7 +242,7 @@ export default function App() {
        return a.name.localeCompare(b.name);
      });
 
-     // Filter out Library space (deprecated) and any other hidden system spaces
+     // Filter out hidden system spaces
      const visibleSpaces = sortedSpaces.filter(space => space.name !== 'Library');
 
      // Group collections by space
@@ -660,20 +662,26 @@ export default function App() {
       <div
         key={coll.id}
         style={{ paddingLeft: `${level * 12}px` }}
-        draggable={coll.id !== 'inbox-collection'}
+        draggable={!isEditingCollections && coll.id !== 'inbox-collection'}
         onDragStart={(e) => {
+          if (isEditingCollections) return;
           e.stopPropagation();
           setDraggedCollectionId(coll.id);
           e.dataTransfer.effectAllowed = "move";
         }}
         onDragOver={(e) => {
+          if (isEditingCollections) return;
           e.preventDefault();
           if (coll.id !== draggedCollectionId && !isDescendant(draggedCollectionId, coll.id)) {
             setDropTargetCollectionId(coll.id);
           }
         }}
-        onDragLeave={() => setDropTargetCollectionId(null)}
+        onDragLeave={() => {
+          if (isEditingCollections) return;
+          setDropTargetCollectionId(null);
+        }}
         onDrop={(e) => {
+          if (isEditingCollections) return;
           e.preventDefault();
           setDropTargetCollectionId(null);
           if (draggedCollectionId && coll.id !== draggedCollectionId && !isDescendant(draggedCollectionId, coll.id)) {
@@ -1779,23 +1787,32 @@ export default function App() {
                       <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
                         Collections
                       </div>
-                      <button
-                        onClick={() => {
-                          // Toggle edit mode
-                          if (isEditingCollections) {
-                            // Save
-                            handleUpdateBookmarkCollections(selectedBookmark.id, selectedCollectionIdsForEdit);
-                            setIsEditingCollections(false);
-                          } else {
-                            // Enter edit mode
-                            setSelectedCollectionIdsForEdit(selectedBookmark.collections?.map(c => c.id) || []);
-                            setIsEditingCollections(true);
-                          }
-                        }}
-                        className="text-xs text-blue-600 hover:underline"
-                      >
-                        {isEditingCollections ? 'Save' : 'Edit'}
-                      </button>
+                       <div className="flex gap-2">
+                         <button
+                           onClick={() => {
+                             if (isEditingCollections) {
+                               handleUpdateBookmarkCollections(selectedBookmark.id, selectedCollectionIdsForEdit);
+                               setIsEditingCollections(false);
+                             } else {
+                               setSelectedCollectionIdsForEdit(selectedBookmark.collections?.map(c => c.id) || []);
+                               setIsEditingCollections(true);
+                             }
+                           }}
+                           className="text-xs text-blue-600 hover:underline"
+                         >
+                           {isEditingCollections ? 'Save' : 'Edit'}
+                         </button>
+                         {isEditingCollections && (
+                           <button
+                             onClick={() => {
+                               setIsEditingCollections(false);
+                             }}
+                             className="text-xs text-slate-500 hover:underline"
+                           >
+                             Cancel
+                           </button>
+                         )}
+                       </div>
                     </div>
                     {isEditingCollections ? (
                       <div className="space-y-1 max-h-40 overflow-y-auto border border-slate-200 rounded-lg p-2">

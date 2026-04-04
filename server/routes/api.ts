@@ -349,7 +349,7 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
      }
 
      // Update legacy category_id to first collection for backward compatibility
-     db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], id);
+     db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0] || null, id);
 
      const collections = db.prepare(`
        SELECT c.* FROM collections c
@@ -859,6 +859,9 @@ router.get("/backup", (req, res) => {
     const bookmarks = db.prepare("SELECT * FROM bookmarks").all();
     const tags = db.prepare("SELECT * FROM tags").all();
     const bookmark_tags = db.prepare("SELECT * FROM bookmark_tags").all();
+    const spaces = db.prepare("SELECT * FROM spaces").all();
+    const collections = db.prepare("SELECT * FROM collections").all();
+    const bookmark_collections = db.prepare("SELECT * FROM bookmark_collections").all();
 
     const backup = {
       version: 1,
@@ -868,6 +871,9 @@ router.get("/backup", (req, res) => {
         bookmarks,
         tags,
         bookmark_tags,
+        spaces,
+        collections,
+        bookmark_collections,
       },
     };
 
@@ -888,19 +894,30 @@ router.post("/restore", (req, res) => {
       return res.status(400).json({ error: "Invalid backup file" });
     }
 
-    const { categories, bookmarks, tags, bookmark_tags } = backup.data;
+    const { categories, bookmarks, tags, bookmark_tags, spaces, collections, bookmark_collections } = backup.data;
 
     // Defer foreign key constraints for the upcoming transaction
     db.pragma("defer_foreign_keys = ON");
 
     db.transaction(() => {
       // Clear existing data
+      db.prepare("DELETE FROM bookmark_collections").run();
       db.prepare("DELETE FROM bookmark_tags").run();
       db.prepare("DELETE FROM tags").run();
       db.prepare("DELETE FROM bookmarks").run();
+      db.prepare("DELETE FROM collections").run();
+      db.prepare("DELETE FROM spaces").run();
       db.prepare("DELETE FROM categories").run();
 
-      // Insert new data
+      // Insert spaces first
+      const insertSpace = db.prepare(
+        "INSERT INTO spaces (id, name, icon, color, created_at) VALUES (?, ?, ?, ?, ?)"
+      );
+      for (const s of spaces || []) {
+        insertSpace.run(s.id, s.name, s.icon, s.color, s.created_at);
+      }
+
+      // Insert categories
       const insertCategory = db.prepare(
         "INSERT INTO categories (id, name, icon, color, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
       );
@@ -908,6 +925,15 @@ router.post("/restore", (req, res) => {
         insertCategory.run(c.id, c.name, c.icon, c.color, c.parent_id, c.created_at);
       }
 
+      // Insert collections
+      const insertCollection = db.prepare(
+        "INSERT INTO collections (id, name, icon, color, space_id, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      );
+      for (const c of collections || []) {
+        insertCollection.run(c.id, c.name, c.icon, c.color, c.space_id, c.parent_id, c.created_at);
+      }
+
+      // Insert bookmarks
       const insertBookmark = db.prepare(
         "INSERT INTO bookmarks (id, url, title, description, cover_image_url, content_text, category_id, domain, images_json, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       );
@@ -928,16 +954,26 @@ router.post("/restore", (req, res) => {
         );
       }
 
+      // Insert tags
       const insertTag = db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)");
       for (const t of tags || []) {
         insertTag.run(t.id, t.name);
       }
 
+      // Insert bookmark_tags
       const insertBookmarkTag = db.prepare(
         "INSERT INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)"
       );
       for (const bt of bookmark_tags || []) {
         insertBookmarkTag.run(bt.bookmark_id, bt.tag_id);
+      }
+
+      // Insert bookmark_collections
+      const insertBookmarkCollection = db.prepare(
+        "INSERT INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)"
+      );
+      for (const bc of bookmark_collections || []) {
+        insertBookmarkCollection.run(bc.bookmark_id, bc.collection_id);
       }
     })();
 

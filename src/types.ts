@@ -1,8 +1,8 @@
 export interface Space {
   id: string;
   name: string;
-  icon: string;
-  color: string;
+  icon: string | null;
+  color: string | null;
   created_at: string;
   collectionCount?: number;
 }
@@ -10,8 +10,8 @@ export interface Space {
 export interface Collection {
   id: string;
   name: string;
-  icon: string;
-  color: string;
+  icon: string | null;
+  color: string | null;
   space_id: string;
   parent_id: string | null;
   created_at: string;
@@ -32,15 +32,18 @@ export interface Domain {
 export interface Bookmark {
   id: string;
   url: string;
-  title: string;
-  description: string;
-  cover_image_url: string;
-  content_text: string;
-  domain: string;
+  title: string | null;
+  description: string | null;
+  cover_image_url: string | null;
+  content_text: string | null;
+  category_id: string | null;
+  domain: string | null;
   images_json: string | null;
+  category_name?: string | null;
+  category_color?: string | null;
   created_at: string;
   updated_at: string;
-  is_deleted: number;
+  is_deleted: 0 | 1;
   tags: Tag[];
-  collections?: Collection[]; // New: multi-collection support
+  collections?: Collection[];
 }

@@ -1,5 +1,4 @@
 import Database from "better-sqlite3";
-import os from "os";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
@@ -52,6 +51,8 @@ db.exec(`
     category_id TEXT,
     domain TEXT,
     images_json TEXT,
+    categorization_at DATETIME,
+    categorization_source TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_deleted INTEGER DEFAULT 0,
@@ -106,6 +107,8 @@ db.exec(`
     FOREIGN KEY (bookmark_id) REFERENCES bookmarks(id) ON DELETE CASCADE,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
   );
+  CREATE INDEX IF NOT EXISTS idx_bc_bookmark ON bookmark_collections(bookmark_id);
+  CREATE INDEX IF NOT EXISTS idx_bc_collection ON bookmark_collections(collection_id);
   `);
  
  // Migrations for existing databases
@@ -140,10 +143,6 @@ db.exec(`
     } catch (e) {}
   }
 } catch (e) {}
-
-try {
-  db.exec("ALTER TABLE bookmarks ADD COLUMN images_json TEXT");
-} catch (e) { /* ignore if exists */ }
 
 // Insert default categories if empty
 const catCount = db
@@ -209,6 +208,7 @@ const catCount = db
       })();
     } catch (err) {
       console.error("Spaces migration failed:", err);
+      throw err;
     }
   }
 
