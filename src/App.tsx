@@ -987,7 +987,7 @@ export default function App() {
     setSelectedBookmarkIds(newSet);
   };
 
-  const filteredBookmarks = bookmarks.filter(
+  const filteredBookmarks = React.useMemo(() => bookmarks.filter(
     (b) => {
       const matchesSearch = b.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         b.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1023,7 +1023,7 @@ export default function App() {
       default:
         return 0;
     }
-  });
+  }), [bookmarks, searchQuery, filterBy, sortBy]);
 
    return (
      <>
@@ -1295,7 +1295,7 @@ export default function App() {
                 <Filter size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
                 <select
                   value={filterBy}
-                  onChange={(e) => setFilterBy(e.target.value as any)}
+                  onChange={(e) => setFilterBy(e.target.value as "all" | "has_images" | "has_summary" | "has_content")}
                   className="pl-8 pr-8 py-1.5 bg-slate-100 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-md text-sm text-slate-700 transition-all outline-none appearance-none cursor-pointer"
                 >
                   <option value="all">All Bookmarks</option>
@@ -1310,7 +1310,7 @@ export default function App() {
                 <ArrowUpDown size={14} className="absolute left-2.5 text-slate-400 pointer-events-none" />
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
+                  onChange={(e) => setSortBy(e.target.value as "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc")}
                   className="pl-8 pr-8 py-1.5 bg-slate-100 border-transparent focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 rounded-md text-sm text-slate-700 transition-all outline-none appearance-none cursor-pointer"
                 >
                   <option value="date_desc">Newest First</option>
@@ -1369,7 +1369,7 @@ export default function App() {
               <div className="flex bg-slate-100 p-0.5 rounded-md border border-slate-200">
                 <select
                   value={itemSize}
-                  onChange={(e) => setItemSize(e.target.value as any)}
+                  onChange={(e) => setItemSize(e.target.value as "small" | "medium" | "large")}
                   className="bg-transparent border-none text-xs text-slate-600 focus:ring-0 cursor-pointer outline-none pl-2 pr-1 py-1 appearance-none"
                 >
                   <option value="small">Small</option>
@@ -1444,7 +1444,7 @@ export default function App() {
                     <input
                       type="checkbox"
                       checked={selectedBookmarkIds.has(bookmark.id)}
-                      onChange={(e) => toggleBookmarkSelection(bookmark.id, e as any)}
+                      onChange={(e) => toggleBookmarkSelection(bookmark.id, e as React.MouseEvent<HTMLInputElement>)}
                       onClick={(e) => e.stopPropagation()}
                       className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
@@ -1494,7 +1494,7 @@ export default function App() {
                     )}
 
                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                       {(bookmark.collections || []).slice(0, 2).map((coll: any) => (
+                        {(bookmark.collections || []).slice(0, 2).map((coll: Collection) => (
                          <span
                            key={coll.id}
                            className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 flex items-center gap-1"
@@ -1824,7 +1824,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1">
-                        {(selectedBookmark.collections || []).map((coll: any) => (
+                         {(selectedBookmark.collections || []).map((coll: Collection) => (
                           <div key={coll.id} className="flex items-center gap-2 text-sm text-slate-700">
                             <div
                               className="w-2 h-2 rounded-full"
