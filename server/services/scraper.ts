@@ -64,44 +64,15 @@ export async function fetchBookmarkData(url: string) {
     
   const extractedImages = new Set<string>();
 
-  // YouTube specific handling
-  if (url.includes('youtube.com/') || url.includes('youtu.be/')) {
-    try {
-      let videoId = null;
-      try {
-        const urlObj = new URL(url);
-        if (urlObj.hostname.includes('youtube.com')) {
-          videoId = urlObj.searchParams.get('v');
-          if (!videoId && urlObj.pathname.startsWith('/shorts/')) {
-            videoId = urlObj.pathname.split('/')[2];
-          }
-        } else if (urlObj.hostname.includes('youtu.be')) {
-          videoId = urlObj.pathname.slice(1);
-        }
-      } catch (e) {}
-
-      if (videoId) {
-        cover_image_url = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-        extractedImages.add(cover_image_url);
-        extractedImages.add(`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`);
-        extractedImages.add(`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`);
-      }
-
-      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-      if (oembedRes.ok) {
-        const oembedData = await oembedRes.json();
-        title = oembedData.title || title;
-        if (!videoId) {
-          cover_image_url = oembedData.thumbnail_url || cover_image_url;
-        }
-        description = oembedData.author_name ? `Video by ${oembedData.author_name}` : description;
-      }
-    } catch (e) {
-      console.error("Failed to fetch YouTube oembed", e);
+// YouTube specific handling
+    if (url.includes('youtube.com/') || url.includes('youtu.be/')) {
+      const result = await handleYouTubeMetadata(url, cover_image_url, extractedImages);
+      cover_image_url = result.cover_image_url;
+      title = result.title;
+      description = result.description;
     }
-  }
 
-  if (cover_image_url) extractedImages.add(cover_image_url);
+    if (cover_image_url) extractedImages.add(cover_image_url);
 
   // Extract multiple og:images if available
   $('meta[property="og:image"]').each((i, el) => {
@@ -185,4 +156,45 @@ export async function fetchBookmarkData(url: string) {
     domain,
     suggestedTags
   };
+}
+
+async function handleYouTubeMetadata(url: string, cover_image_url: string, extractedImages: Set<string>): Promise<{cover_image_url: string; title: string; description: string}> {
+  let result = { cover_image_url, title: '', description: '' };
+  try {
+    let videoId = null;
+    try {
+      const urlObj = new URL(url);
+      if (urlObj.hostname.includes('youtube.com')) {
+        videoId = urlObj.searchParams.get('v');
+        if (!videoId && urlObj.pathname.startsWith('/shorts/')) {
+          videoId = urlObj.pathname.split('/')[2];
+        }
+      } else if (urlObj.hostname.includes('youtu.be')) {
+        videoId = urlObj.pathname.slice(1);
+      }
+    } catch (e) {}
+
+    if (videoId) {
+      const maxresUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+      const hqUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+      const mqUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+      result.cover_image_url = maxresUrl;
+      extractedImages.add(maxresUrl);
+      extractedImages.add(hqUrl);
+      extractedImages.add(mqUrl);
+    }
+
+    const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+    if (oembedRes.ok) {
+      const oembedData = await oembedRes.json();
+      result.title = oembedData.title || result.title;
+      if (!videoId) {
+        result.cover_image_url = oembedData.thumbnail_url || result.cover_image_url;
+      }
+      result.description = oembedData.author_name ? `Video by ${oembedData.author_name}` : result.description;
+    }
+  } catch (e) {
+    console.error("Failed to fetch YouTube oembed", e);
+  }
+  return result;
 }
