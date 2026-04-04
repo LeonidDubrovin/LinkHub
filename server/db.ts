@@ -183,7 +183,19 @@ const catCount = db
         db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES (?, ?, ?, ?, ?)")
           .run('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space');
 
-        // 3. Migrate existing categories to collections (preserve IDs) - all go to Inbox space
+        // 3. Migrate any existing Library space collections to Inbox (cleanup from old migration)
+        const librarySpace = db.prepare("SELECT id FROM spaces WHERE name = 'Library' LIMIT 1").get() as any;
+        if (librarySpace) {
+          const librarySpaceId = librarySpace.id;
+          // Move all collections from Library to Inbox
+          db.prepare("UPDATE collections SET space_id = 'inbox-space' WHERE space_id = ?").run(librarySpaceId);
+          console.log(`Moved collections from Library to Inbox`);
+          // Delete Library space
+          db.prepare("DELETE FROM spaces WHERE id = ?").run(librarySpaceId);
+          console.log(`Deleted Library space`);
+        }
+
+        // 4. Migrate existing categories to collections (preserve IDs) - all go to Inbox space
         const oldCategories = db.prepare("SELECT * FROM categories").all() as any[];
         const insertCollection = db.prepare(`
           INSERT OR IGNORE INTO collections (id, name, icon, color, space_id, parent_id, created_at)
