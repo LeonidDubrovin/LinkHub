@@ -471,14 +471,36 @@ export default function App() {
         setToast({ message: "Please enter a name", type: "error" });
         return;
       }
-      try {
-        // Determine target space: Library preferred, else first available
+
+      let targetSpaceId: string | null = null;
+
+      // Use loaded spaces if available
+      if (spaces.length > 0) {
         const libSpace = spaces.find(s => s.name === 'Library');
-        const targetSpaceId = libSpace?.id || spaces[0]?.id || null;
-        if (!targetSpaceId) {
-          setToast({ message: "No space available", type: "error" });
-          return;
+        targetSpaceId = libSpace?.id || spaces[0]?.id;
+      } else {
+        // Fallback: fetch spaces to find Library
+        try {
+          const res = await fetch("/api/spaces");
+          if (res.ok) {
+            const spacesData = await res.json();
+            if (Array.isArray(spacesData) && spacesData.length > 0) {
+              const libSpace = spacesData.find((s: any) => s.name === 'Library');
+              targetSpaceId = libSpace?.id || spacesData[0]?.id;
+              setSpaces(spacesData); // cache for future
+            }
+          }
+        } catch (e) {
+          console.error("Failed to fetch spaces", e);
         }
+      }
+
+      if (!targetSpaceId) {
+        setToast({ message: "No space available. Please refresh the page.", type: "error" });
+        return;
+      }
+
+      try {
         const res = await fetch("/api/collections", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -496,7 +518,8 @@ export default function App() {
           fetchCollections();
           setToast({ message: "Collection created", type: "success" });
         } else {
-          setToast({ message: "Failed to create collection", type: "error" });
+          const err = await res.json().catch(() => ({}));
+          setToast({ message: `Failed: ${err.error || 'unknown error'}`, type: "error" });
         }
       } catch (error: any) {
         setToast({ message: error.message || "Failed to create collection", type: "error" });
