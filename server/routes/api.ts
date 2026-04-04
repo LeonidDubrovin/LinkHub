@@ -9,10 +9,56 @@ import { CategorizationService } from "../services/categorizer.js";
 import fs from "fs";
 import path from "path";
 
-import { categorizeWithAI } from "../services/ai.js";
-
 const router = express.Router();
 const categorizer = new CategorizationService();
+
+// Validate URL is safe for proxy (not internal/private)
+function isSafeProxyUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+    // Block localhost, loopback, private ranges, cloud metadata
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
+    if (hostname === '0.0.0.0' || hostname.endsWith('.local')) return false;
+    // Block private IP ranges
+    const parts = hostname.split('.').map(Number);
+    if (parts.length === 4 && parts.every(p => !isNaN(p))) {
+      if (parts[0] === 10) return false;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+      if (parts[0] === 192 && parts[1] === 168) return false;
+      if (parts[0] === 127) return false;
+      if (parts[0] === 169 && parts[1] === 254) return false; // Cloud metadata
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Validate URL is safe for proxy (not internal/private)
+function isSafeProxyUrl(urlStr: string): boolean {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const hostname = parsed.hostname.toLowerCase();
+    // Block localhost, loopback, private ranges, cloud metadata
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') return false;
+    if (hostname === '0.0.0.0' || hostname.endsWith('.local')) return false;
+    // Block private IP ranges
+    const parts = hostname.split('.').map(Number);
+    if (parts.length === 4 && parts.every(p => !isNaN(p))) {
+      if (parts[0] === 10) return false;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return false;
+      if (parts[0] === 192 && parts[1] === 168) return false;
+      if (parts[0] === 127) return false;
+      if (parts[0] === 169 && parts[1] === 254) return false; // Cloud metadata
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 router.get("/settings", (req, res) => {
   const config = getConfig();
@@ -22,7 +68,7 @@ router.get("/settings", (req, res) => {
     llm: {
       enabled: config.llm?.enabled ?? false,
       provider: config.llm?.provider ?? 'openrouter',
-      apiKey: config.llm?.apiKey ?? '',
+      apiKey: config.llm?.apiKey ? '••••••••' + config.llm.apiKey.slice(-4) : '',
       model: config.llm?.model ?? 'stepfun/step-3.5-flash:free',
       autoCategorizeOnAdd: config.llm?.autoCategorizeOnAdd ?? true,
       fallbackToLocal: config.llm?.fallbackToLocal ?? true
@@ -542,37 +588,91 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
      return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
    }
 
-   // Insert immediately with basic info
+   // 1. Validate collectionIds BEFORE inserting bookmark
+   let collectionIds = options.collectionIds && options.collectionIds.length > 0
+     ? options.collectionIds
+     : ['inbox-collection'];
+
+   if (collectionIds.length > 0) {
+     const placeholders = collectionIds.map(() => '?').join(',');
+     const existingCollections = db.prepare(`SELECT id FROM collections WHERE id IN (${placeholders})`).all(...collectionIds) as any[];
+     if (existingCollections.length !== collectionIds.length) {
+       return { id: null, title: url, success: false, error: "One or more collections not found" };
+     }
+   }
+
+   // 2. Insert bookmark and collection links in a transaction
    const bookmarkId = uuidv4();
    let domain = "";
    try {
      domain = new URL(url).hostname;
    } catch (e) {}
 
-   const insertBookmark = db.prepare(`
-     INSERT INTO bookmarks (id, url, title, domain)
-     VALUES (?, ?, ?, ?)
-   `);
+   db.transaction(() => {
+     const insertBookmark = db.prepare(`
+       INSERT INTO bookmarks (id, url, title, domain)
+       VALUES (?, ?, ?, ?)
+     `);
+     insertBookmark.run(bookmarkId, url, url, domain);
 
-   insertBookmark.run(bookmarkId, url, url, domain);
+     // Set legacy category_id to first collection for backward compatibility
+     db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0] || null, bookmarkId);
 
-   // Assign collections (default to Inbox)
-   const collectionIds = options.collectionIds && options.collectionIds.length > 0
+     // Create bookmark-collection links
+     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+     for (const colId of collectionIds) {
+       insertLink.run(bookmarkId, colId);
+     }
+   })();
+
+   return { id: bookmarkId, title: url, success: true, needsRefresh: true, collectionIds };
+ }
+
+   // 0. Check if already exists
+   const existing = db
+     .prepare("SELECT id, title FROM bookmarks WHERE url = ? AND is_deleted = 0")
+     .get(url) as any;
+
+   if (existing) {
+     return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
+   }
+
+   // 1. Validate collectionIds BEFORE inserting bookmark
+   let collectionIds = options.collectionIds && options.collectionIds.length > 0
      ? options.collectionIds
      : ['inbox-collection'];
 
-   // Set legacy category_id to first collection for backward compatibility
-   db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], bookmarkId);
-
-   // Create bookmark-collection links
-   const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-   for (const colId of collectionIds) {
-     // Verify collection exists (skip invalid)
-     const coll = db.prepare("SELECT id FROM collections WHERE id = ?").get(colId);
-     if (coll) {
-       insertLink.run(bookmarkId, colId);
+   if (collectionIds.length > 0) {
+     const placeholders = collectionIds.map(() => '?').join(',');
+     const existingCollections = db.prepare(`SELECT id FROM collections WHERE id IN (${placeholders})`).all(...collectionIds) as any[];
+     if (existingCollections.length !== collectionIds.length) {
+       return { id: null, title: url, success: false, error: "One or more collections not found" };
      }
    }
+
+   // 2. Insert bookmark and collection links in a transaction
+   const bookmarkId = uuidv4();
+   let domain = "";
+   try {
+     domain = new URL(url).hostname;
+   } catch (e) {}
+
+   db.transaction(() => {
+     const insertBookmark = db.prepare(`
+       INSERT INTO bookmarks (id, url, title, domain)
+       VALUES (?, ?, ?, ?)
+     `);
+     insertBookmark.run(bookmarkId, url, url, domain);
+
+     // Set legacy category_id to first collection for backward compatibility
+     db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0] || null, bookmarkId);
+
+     // Create bookmark-collection links
+     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+     for (const colId of collectionIds) {
+       insertLink.run(bookmarkId, colId);
+     }
+   })();
 
    return { id: bookmarkId, title: url, success: true, needsRefresh: true, collectionIds };
  }
@@ -674,6 +774,11 @@ router.get("/bookmarks/:id/readability", async (req, res) => {
 router.get("/proxy", async (req, res) => {
   const url = req.query.url as string;
   if (!url) return res.status(400).send("URL is required");
+
+  // Validate URL is safe (block internal/private addresses)
+  if (!isSafeProxyUrl(url)) {
+    return res.status(403).send("Access to internal addresses is not allowed");
+  }
 
   try {
     const config = getConfig();
@@ -822,14 +927,15 @@ router.post("/bookmarks/:id/refresh", async (req, res) => {
 
 router.delete("/bookmarks/:id", (req, res) => {
   const { id } = req.params;
-  db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
-  db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
-  
-  // Clean up orphaned tags
-  db.prepare(`
-    DELETE FROM tags 
-    WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
-  `).run();
+  db.transaction(() => {
+    db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
+    db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
+    db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
+    db.prepare(`
+      DELETE FROM tags 
+      WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
+    `).run();
+  })();
 
   res.json({ success: true });
 });
@@ -841,14 +947,15 @@ router.post("/bookmarks/bulk-delete", (req, res) => {
   }
 
   const placeholders = ids.map(() => '?').join(',');
-  db.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id IN (${placeholders})`).run(...ids);
-  db.prepare(`DELETE FROM bookmarks WHERE id IN (${placeholders})`).run(...ids);
-  
-  // Clean up orphaned tags
-  db.prepare(`
-    DELETE FROM tags 
-    WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
-  `).run();
+  db.transaction(() => {
+    db.prepare(`DELETE FROM bookmark_collections WHERE bookmark_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id IN (${placeholders})`).run(...ids);
+    db.prepare(`DELETE FROM bookmarks WHERE id IN (${placeholders})`).run(...ids);
+    db.prepare(`
+      DELETE FROM tags 
+      WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
+    `).run();
+  })();
 
   res.json({ success: true });
 });

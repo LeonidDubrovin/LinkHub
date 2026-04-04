@@ -5,8 +5,6 @@ import { v4 as uuidv4 } from "uuid";
 import * as tldts from "tldts";
 import { getConfig } from "./config.js";
 
-const appName = "LinkHub";
-
 let dataDir = process.env.DATA_DIR;
 if (!dataDir) {
   const config = getConfig();
@@ -109,6 +107,12 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_bc_bookmark ON bookmark_collections(bookmark_id);
   CREATE INDEX IF NOT EXISTS idx_bc_collection ON bookmark_collections(collection_id);
+  CREATE INDEX IF NOT EXISTS idx_bookmarks_category ON bookmarks(category_id);
+  CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON bookmarks(domain);
+  CREATE INDEX IF NOT EXISTS idx_bookmarks_deleted ON bookmarks(is_deleted);
+  CREATE INDEX IF NOT EXISTS idx_bt_tag ON bookmark_tags(tag_id);
+  CREATE INDEX IF NOT EXISTS idx_bt_bookmark ON bookmark_tags(bookmark_id);
+  CREATE INDEX IF NOT EXISTS idx_collections_space ON collections(space_id);
   `);
  
  // Migrations for existing databases
