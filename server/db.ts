@@ -163,36 +163,27 @@ const catCount = db
  // Run spaces & collections migration (one-time, idempotent)
  runSpacesMigration(db, uuidv4);
 
- // Migration to Spaces & Collections model
- function runSpacesMigration(db: Database, uuidv4: (options?: any) => string) {
-   try {
-     // Check if already migrated
-     const check = db.prepare("SELECT 1 FROM spaces WHERE id = 'inbox-space'").get();
-     if (check) {
-       console.log("Spaces migration already completed, skipping.");
-       return;
-     }
-
-     console.log("Running spaces & collections migration...");
+  // Migration to Spaces & Collections model - idempotent (can run multiple times)
+  function runSpacesMigration(db: Database, uuidv4: (options?: any) => string) {
+    try {
+      console.log("Running spaces & collections migration (idempotent)...");
       db.transaction(() => {
         // 1. Create Inbox space (system) - the only default space
-        db.prepare("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
-          .run('inbox-space', 'Inbox', 'Inbox', '#6b7280');
+        db.exec("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES ('inbox-space', 'Inbox', 'Inbox', '#6b7280')");
 
         // 2. Create Inbox collection in Inbox space (for unassigned bookmarks)
-        db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES (?, ?, ?, ?, ?)")
-          .run('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space');
+        db.exec("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES ('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space')");
 
-        // 3. Migrate any existing Library space collections to Inbox (cleanup from old migration)
+        // 3. Cleanup: Migrate any existing Library space collections to Inbox (for old DBs)
         const librarySpace = db.prepare("SELECT id FROM spaces WHERE name = 'Library' LIMIT 1").get() as any;
         if (librarySpace) {
           const librarySpaceId = librarySpace.id;
           // Move all collections from Library to Inbox
           db.prepare("UPDATE collections SET space_id = 'inbox-space' WHERE space_id = ?").run(librarySpaceId);
-          console.log(`Moved collections from Library to Inbox`);
+          console.log(`  - Moved collections from Library to Inbox`);
           // Delete Library space
           db.prepare("DELETE FROM spaces WHERE id = ?").run(librarySpaceId);
-          console.log(`Deleted Library space`);
+          console.log(`  - Deleted Library space`);
         }
 
         // 4. Migrate existing categories to collections (preserve IDs) - all go to Inbox space
@@ -226,12 +217,12 @@ const catCount = db
          }
        }
 
-       console.log(`Migration complete: ${oldCategories.length} collections, ${bookmarks.length} bookmark links processed.`);
-     })();
-   } catch (err) {
-     console.error("Spaces migration failed:", err);
-   }
- }
+       console.log(`Migration complete: ${oldCategories.length} categories, ${bookmarks.length} bookmarks processed.`);
+      })();
+    } catch (err) {
+      console.error("Spaces migration failed:", err);
+    }
+  }
 
  export const getDataDir = () => dataDir;
  export default db;
