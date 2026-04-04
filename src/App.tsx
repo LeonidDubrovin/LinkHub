@@ -105,6 +105,10 @@ export default function App() {
    const [isCreatingCollection, setIsCreatingCollection] = useState(false);
    const [newCollectionName, setNewCollectionName] = useState("");
 
+   // Drag and drop state for collections
+   const [draggedCollectionId, setDraggedCollectionId] = useState<string | null>(null);
+   const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null);
+
   useEffect(() => {
     localStorage.setItem('viewMode', viewMode);
   }, [viewMode]);
@@ -525,21 +529,91 @@ export default function App() {
       }
     };
 
+    // Drag-and-drop for collection hierarchy
+    const isDescendant = (candidateAncestorId: string, descendantId: string): boolean => {
+      if (candidateAncestorId === descendantId) return true; // self is descendant (prevent moving into self)
+      let curr = collections.find(c => c.id === descendantId);
+      while (curr && curr.parent_id) {
+        if (curr.parent_id === candidateAncestorId) return true;
+        curr = collections.find(c => c.id === curr.parent_id);
+      }
+      return false;
+    };
+
+    const handleMoveCollection = async (draggedId: string, targetId: string) => {
+      // Prevent moving system collections
+      if (draggedId === 'inbox-collection' || targetId === 'inbox-collection') {
+        setToast({ message: "Cannot move system collections", type: "error" });
+        return;
+      }
+      // Prevent cycles: target cannot be a descendant of dragged
+      if (isDescendant(draggedId, targetId)) {
+        setToast({ message: "Cannot move collection into its own descendant", type: "error" });
+        return;
+      }
+      try {
+        const res = await fetch(`/api/collections/${draggedId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ parent_id: targetId })
+        });
+        if (res.ok) {
+          fetchCollections();
+          setToast({ message: "Collection moved", type: "success" });
+        } else {
+          setToast({ message: "Failed to move collection", type: "error" });
+        }
+      } catch (error) {
+        console.error("Move collection error:", error);
+        setToast({ message: "Failed to move collection", type: "error" });
+      } finally {
+        setDraggedCollectionId(null);
+        setDropTargetCollectionId(null);
+      }
+    };
+
     // Render functions (defined after handlers for proper closure)
     const renderCollections = (colls: Collection[], level: number) => {
       return colls.map(coll => (
         <div key={coll.id} className="group relative">
           <button
+            draggable={coll.id !== 'inbox-collection'}
+            onDragStart={(e) => {
+              e.stopPropagation();
+              setDraggedCollectionId(coll.id);
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (coll.id !== draggedCollectionId && !isDescendant(draggedCollectionId, coll.id)) {
+                setDropTargetCollectionId(coll.id);
+              }
+            }}
+            onDragLeave={() => setDropTargetCollectionId(null)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDropTargetCollectionId(null);
+              if (draggedCollectionId && coll.id !== draggedCollectionId && !isDescendant(draggedCollectionId, coll.id)) {
+                handleMoveCollection(draggedCollectionId, coll.id);
+              }
+              setDraggedCollectionId(null);
+            }}
+            onDragEnd={() => {
+              setDraggedCollectionId(null);
+              setDropTargetCollectionId(null);
+            }}
             onClick={() => {
               setSelectedCollectionId(coll.id);
               setSelectedTagId(null);
               setSelectedDomain(null);
             }}
             className={cn(
-              "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm mb-0.5",
+              "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm mb-0.5 border transition-colors",
               selectedCollectionId === coll.id
-                ? "bg-blue-100 text-blue-700 font-medium"
-                : "hover:bg-slate-200 text-slate-700"
+                ? "bg-blue-100 text-blue-700 font-medium border-transparent"
+                : dropTargetCollectionId === coll.id
+                ? "bg-green-100 border-green-400"
+                : "hover:bg-slate-200 text-slate-700 border-transparent"
             )}
             style={{ paddingLeft: `${0.5 + level * 1}rem` }}
           >
@@ -564,7 +638,35 @@ export default function App() {
     };
 
     const renderCollectionCheckbox = (coll: Collection, level: number) => (
-      <div key={coll.id} style={{ paddingLeft: `${level * 12}px` }}>
+      <div
+        key={coll.id}
+        style={{ paddingLeft: `${level * 12}px` }}
+        draggable={coll.id !== 'inbox-collection'}
+        onDragStart={(e) => {
+          e.stopPropagation();
+          setDraggedCollectionId(coll.id);
+          e.dataTransfer.effectAllowed = "move";
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (coll.id !== draggedCollectionId && !isDescendant(draggedCollectionId, coll.id)) {
+            setDropTargetCollectionId(coll.id);
+          }
+        }}
+        onDragLeave={() => setDropTargetCollectionId(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDropTargetCollectionId(null);
+          if (draggedCollectionId && coll.id !== draggedCollectionId && !isDescendant(draggedCollectionId, coll.id)) {
+            handleMoveCollection(draggedCollectionId, coll.id);
+          }
+          setDraggedCollectionId(null);
+        }}
+        onDragEnd={() => {
+          setDraggedCollectionId(null);
+          setDropTargetCollectionId(null);
+        }}
+      >
         <label className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
           <input
             type="checkbox"
