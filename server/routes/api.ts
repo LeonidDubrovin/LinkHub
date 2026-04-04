@@ -930,7 +930,7 @@ router.delete("/bookmarks/:id", (req, res) => {
   db.transaction(() => {
     db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
     db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
-    db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
+    db.prepare("UPDATE bookmarks SET is_deleted = 1 WHERE id = ?").run(id);
     db.prepare(`
       DELETE FROM tags 
       WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
@@ -950,7 +950,7 @@ router.post("/bookmarks/bulk-delete", (req, res) => {
   db.transaction(() => {
     db.prepare(`DELETE FROM bookmark_collections WHERE bookmark_id IN (${placeholders})`).run(...ids);
     db.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id IN (${placeholders})`).run(...ids);
-    db.prepare(`DELETE FROM bookmarks WHERE id IN (${placeholders})`).run(...ids);
+    db.prepare(`UPDATE bookmarks SET is_deleted = 1 WHERE id IN (${placeholders})`).run(...ids);
     db.prepare(`
       DELETE FROM tags 
       WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
