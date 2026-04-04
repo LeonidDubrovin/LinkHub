@@ -238,83 +238,32 @@ export default function App() {
      }));
    }, [spaces, collections]);
 
-   // Build flat tree of all collections (for editing)
-   const allCollectionsTree = React.useMemo(() => {
-     const buildTree = (items: Collection[], parentId: string | null = null): Collection[] => {
-       return items
-         .filter(item => item.parent_id === parentId)
-         .map(item => ({
-           ...item,
-           children: buildTree(items, item.id)
-         }));
-     };
-     return buildTree(collections);
-   }, [collections]);
+    // Compute bookmark count per collection from bookmarks array
+    const collectionBookmarkCounts = React.useMemo(() => {
+      const counts = new Map<string, number>();
+      for (const b of bookmarks) {
+        for (const coll of (b.collections || [])) {
+          counts.set(coll.id, (counts.get(coll.id) || 0) + 1);
+        }
+      }
+      return counts;
+    }, [bookmarks]);
 
-   const renderCollections = (colls: Collection[], level: number) => {
-     return colls.map(coll => (
-       <div key={coll.id} className="group relative">
-         <button
-           onClick={() => {
-             setSelectedCollectionId(coll.id);
-             setSelectedTagId(null);
-             setSelectedDomain(null);
-           }}
-           className={cn(
-             "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm mb-0.5",
-             selectedCollectionId === coll.id
-               ? "bg-blue-100 text-blue-700 font-medium"
-               : "hover:bg-slate-200 text-slate-700"
-           )}
-           style={{ paddingLeft: `${0.5 + level * 1}rem` }}
-         >
-           <Icon name={coll.icon || "Folder"} size={16} color={coll.color} />
-           <span className="truncate flex-1 text-left">{coll.name}</span>
-           {coll.bookmarkCount !== undefined && (
-             <span className="text-xs text-slate-400">{coll.bookmarkCount}</span>
-           )}
-         </button>
-         {/* Delete button (visible on hover) */}
-         <button
-           onClick={(e) => {
-             e.stopPropagation();
-             handleDeleteCollection(coll.id);
-           }}
-           className="absolute right-1 top-1/2 -translate-y-1/2 p-1 opacity-0 group-hover:opacity-100 hover:text-red-500 text-slate-400"
-           title="Delete collection"
-         >
-           <Trash2 size={12} />
-         </button>
-         {coll.children && coll.children.length > 0 && renderCollections(coll.children, level + 1)}
-       </div>
-     ));
-   };
+    // Build flat tree of all collections (for editing) with computed counts
+    const allCollectionsTree = React.useMemo(() => {
+      const buildTree = (items: Collection[], parentId: string | null = null): Collection[] => {
+        return items
+          .filter(item => item.parent_id === parentId)
+          .map(item => ({
+            ...item,
+            bookmarkCount: collectionBookmarkCounts.get(item.id) || 0,
+            children: buildTree(items, item.id)
+          }));
+      };
+      return buildTree(collections);
+    }, [collections, collectionBookmarkCounts]);
 
-   const renderCollectionCheckbox = (coll: Collection, level: number) => (
-    <div key={coll.id} style={{ paddingLeft: `${level * 12}px` }}>
-      <label className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
-        <input
-          type="checkbox"
-          checked={selectedCollectionIdsForEdit.includes(coll.id)}
-          onChange={(e) => {
-            if (e.target.checked) {
-              setSelectedCollectionIdsForEdit(prev => [...prev, coll.id]);
-            } else {
-              setSelectedCollectionIdsForEdit(prev => prev.filter(id => id !== coll.id));
-            }
-          }}
-          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-        />
-        <Icon name={coll.icon || "Folder"} size={14} color={coll.color} />
-        <span className="truncate">{coll.name}</span>
-      </label>
-      {coll.children && coll.children.length > 0 && (
-        <div>
-          {coll.children.map(child => renderCollectionCheckbox(child, level + 1))}
-        </div>
-      )}
-    </div>
-  );
+    // Render functions are defined after handlers below
 
    const togglePinDomain = (domain: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -573,10 +522,74 @@ export default function App() {
      } catch (error) {
        console.error("Delete collection error:", error);
        setToast({ message: "Failed to delete collection", type: "error" });
-     }
-   };
+      }
+    };
 
-  const handleDeleteBookmark = async (id: string) => {
+    // Render functions (defined after handlers for proper closure)
+    const renderCollections = (colls: Collection[], level: number) => {
+      return colls.map(coll => (
+        <div key={coll.id} className="group relative">
+          <button
+            onClick={() => {
+              setSelectedCollectionId(coll.id);
+              setSelectedTagId(null);
+              setSelectedDomain(null);
+            }}
+            className={cn(
+              "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm mb-0.5",
+              selectedCollectionId === coll.id
+                ? "bg-blue-100 text-blue-700 font-medium"
+                : "hover:bg-slate-200 text-slate-700"
+            )}
+            style={{ paddingLeft: `${0.5 + level * 1}rem` }}
+          >
+            <Icon name={coll.icon || "Folder"} size={16} color={coll.color} />
+            <span className="truncate flex-1 text-left">{coll.name}</span>
+            <span className="text-xs text-slate-400">{collectionBookmarkCounts.get(coll.id) || 0}</span>
+          </button>
+          {/* Delete button (visible on hover) */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDeleteCollection(coll.id);
+            }}
+            className="absolute right-1 top-1/2 -translate-y-1/2 p-1 opacity-0 group-hover:opacity-100 hover:text-red-500 text-slate-400"
+            title="Delete collection"
+          >
+            <Trash2 size={12} />
+          </button>
+          {coll.children && coll.children.length > 0 && renderCollections(coll.children, level + 1)}
+        </div>
+      ));
+    };
+
+    const renderCollectionCheckbox = (coll: Collection, level: number) => (
+      <div key={coll.id} style={{ paddingLeft: `${level * 12}px` }}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer py-0.5">
+          <input
+            type="checkbox"
+            checked={selectedCollectionIdsForEdit.includes(coll.id)}
+            onChange={(e) => {
+              if (e.target.checked) {
+                setSelectedCollectionIdsForEdit(prev => [...prev, coll.id]);
+              } else {
+                setSelectedCollectionIdsForEdit(prev => prev.filter(id => id !== coll.id));
+              }
+            }}
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+          />
+          <Icon name={coll.icon || "Folder"} size={14} color={coll.color} />
+          <span className="truncate">{coll.name}</span>
+        </label>
+        {coll.children && coll.children.length > 0 && (
+          <div>
+            {coll.children.map(child => renderCollectionCheckbox(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+
+   const handleDeleteBookmark = async (id: string) => {
     setConfirmDialog({
       isOpen: true,
       title: "Delete Bookmark",
