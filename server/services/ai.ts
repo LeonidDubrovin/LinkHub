@@ -2,8 +2,8 @@ import { GoogleGenAI, Type } from "@google/genai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { v4 as uuidv4 } from "uuid";
-import db from "../db.js";
-import { getConfig } from "../config.js";
+import db from "../db.ts";
+import { getConfig } from "../config.ts";
 
 export async function categorizeWithAI(
   url: string,

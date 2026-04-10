@@ -1,8 +1,8 @@
-import db from "../db.js";
-import { getConfig } from "../config.js";
-import { CategorizationStrategyFactory } from "./llm/factory.js";
-import { BookmarkData, CategorizationResult, ICategorizationStrategy, CategorizationServiceResult } from "./llm/interfaces.js";
-import { LocalHeuristicsStrategy } from "./llm/local-heuristics.strategy.js";
+import db from "../db.ts";
+import { getConfig } from "../config.ts";
+import { CategorizationStrategyFactory } from "./llm/factory.ts";
+import { BookmarkData, CategorizationResult, ICategorizationStrategy, CategorizationServiceResult } from "./llm/interfaces.ts";
+import { LocalHeuristicsStrategy } from "./llm/local-heuristics.strategy.ts";
 import { v4 as uuidv4 } from "uuid";
 
 export class CategorizationService {
@@ -59,7 +59,7 @@ export class CategorizationService {
      let result: CategorizationResult | null = null;
      let source: 'llm' | 'local' | null = null;
 
-      if (this.llmStrategy && getConfig().llm?.enabled) {
+     if (this.llmStrategy && this.config.llm?.enabled) {
        try {
          result = await this.llmStrategy.categorize(bookmarkData);
          source = 'llm';
@@ -70,7 +70,7 @@ export class CategorizationService {
      }
 
      // 5. Fallback to local heuristics if LLM failed or not configured
-      if (!result && getConfig().localHeuristics?.enabled) {
+     if (!result && this.config.localHeuristics?.enabled) {
        result = await this.localStrategy.categorize(bookmarkData);
        source = 'local';
      }
@@ -98,16 +98,16 @@ export class CategorizationService {
          if (existing) {
            collectionIds.push(existing.id);
          } else {
-            // Create new collection in "Inbox" space
-            const inboxSpace = db.prepare("SELECT id FROM spaces WHERE name = 'Inbox' LIMIT 1").get() as any;
-            if (!inboxSpace) {
-              throw new Error("Inbox space not found");
-            }
-            const newId = uuidv4();
-            const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-            db.prepare(
-              "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
-            ).run(newId, name, "Folder", color, inboxSpace.id, null);
+           // Create new collection in "Library" space
+           const librarySpace = db.prepare("SELECT id FROM spaces WHERE name = 'Library' LIMIT 1").get() as any;
+           if (!librarySpace) {
+             throw new Error("Library space not found");
+           }
+           const newId = uuidv4();
+           const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+           db.prepare(
+             "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
+           ).run(newId, name, "Folder", color, librarySpace.id, null);
            collectionIds.push(newId);
          }
        }
@@ -117,49 +117,48 @@ export class CategorizationService {
        return { success: false, source: null, tags: [], error: "No collections resolved" };
      }
 
-      // 8-10. Wrap all DB mutations in a transaction
-      db.transaction(() => {
-        // Remove old collection links (including Inbox) and add new ones
-        db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(bookmarkId);
-        
-        const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-        for (const colId of collectionIds) {
-          insertLink.run(bookmarkId, colId);
-        }
+     // 8. Remove old collection links (including Inbox) and add new ones
+     db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(bookmarkId);
+     
+     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+     for (const colId of collectionIds) {
+       insertLink.run(bookmarkId, colId);
+     }
 
-        // Update bookmark with first collection as legacy category_id for backward compatibility
-        db.prepare(
-          "UPDATE bookmarks SET category_id = ?, categorization_at = ?, categorization_source = ? WHERE id = ?"
-        ).run(collectionIds[0], new Date().toISOString(), source, bookmarkId);
+     // 9. Update bookmark with first collection as legacy category_id for backward compatibility
+     db.prepare(
+       "UPDATE bookmarks SET category_id = ?, categorization_at = ?, categorization_source = ? WHERE id = ?"
+     ).run(collectionIds[0], new Date().toISOString(), source, bookmarkId);
 
-        // Process tags: create and link
-        for (const tagName of result.tags) {
-          let tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
-          let tagId;
-          if (!tag) {
-            tagId = uuidv4();
-            db.prepare("INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)").run(tagId, tagName);
-            tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
-            if (tag) tagId = tag.id;
-          } else {
-            tagId = tag.id;
-          }
-          
-          // Link bookmark to tag (avoid duplicates)
-          db.prepare("INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)").run(bookmarkId, tagId);
-        }
-      })();
+     // 10. Process tags: create and link
+     const tagIds: string[] = [];
+     for (const tagName of result.tags) {
+       let tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
+       let tagId;
+       if (!tag) {
+         tagId = uuidv4();
+         db.prepare("INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)").run(tagId, tagName);
+         tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
+         if (tag) tagId = tag.id;
+       } else {
+         tagId = tag.id;
+       }
+       tagIds.push(tagId);
+       
+       // Link bookmark to tag (avoid duplicates)
+       db.prepare("INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)").run(bookmarkId, tagId);
+     }
 
-      return {
-        success: true,
-        source,
-        collectionIds,
-        tags: result.tags
-      };
-    }
+     return {
+       success: true,
+       source,
+       collectionIds,
+       tags: result.tags
+     };
+   }
 
   async categorizeAll(onlyUntagged: boolean = true): Promise<{total: number, processed: number, failed: number, errors: string[]}> {
-    let query = "SELECT id FROM bookmarks WHERE is_deleted = 0 AND NOT EXISTS (SELECT 1 FROM bookmark_collections WHERE bookmark_id = bookmarks.id)";
+    let query = "SELECT id FROM bookmarks WHERE is_deleted = 0 AND category_id IS NULL";
     const params: any[] = [];
     
     if (onlyUntagged) {
@@ -187,7 +186,7 @@ export class CategorizationService {
       }
 
       // Rate limiting delay if configured
-      const delay = getConfig().llm?.rateLimitDelay || 0;
+      const delay = this.config.llm?.rateLimitDelay || 0;
       if (delay > 0) {
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -198,7 +197,7 @@ export class CategorizationService {
 
   async getStats(): Promise<{total: number, categorized: number, uncategorized: number, bySource: Record<string, number>}> {
     const total = db.prepare("SELECT COUNT(*) as count FROM bookmarks WHERE is_deleted = 0").get().count;
-    const categorized = db.prepare("SELECT COUNT(*) as count FROM bookmarks WHERE is_deleted = 0 AND EXISTS (SELECT 1 FROM bookmark_collections WHERE bookmark_id = bookmarks.id)").get().count;
+    const categorized = db.prepare("SELECT COUNT(*) as count FROM bookmarks WHERE is_deleted = 0 AND category_id IS NOT NULL").get().count;
     const uncategorized = total - categorized;
     
     const bySource: Record<string, number> = {};

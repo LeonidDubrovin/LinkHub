@@ -2,8 +2,8 @@ import * as cheerio from "cheerio";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import * as tldts from "tldts";
-import { categorizeWithAI } from "./ai.js";
-import { getConfig } from "../config.js";
+import { categorizeWithAI } from "./ai.ts";
+import { getConfig } from "../config.ts";
 
 export async function fetchBookmarkData(url: string) {
   // 1. Fetch HTML
@@ -63,14 +63,42 @@ export async function fetchBookmarkData(url: string) {
   }
     
   const extractedImages = new Set<string>();
-  const MIN_IMAGE_SIZE = 100;
 
   // YouTube specific handling
   if (url.includes('youtube.com/') || url.includes('youtu.be/')) {
-    const result = await handleYouTubeMetadata(url, cover_image_url, extractedImages);
-    cover_image_url = result.cover_image_url;
-    title = result.title;
-    description = result.description;
+    try {
+      let videoId = null;
+      try {
+        const urlObj = new URL(url);
+        if (urlObj.hostname.includes('youtube.com')) {
+          videoId = urlObj.searchParams.get('v');
+          if (!videoId && urlObj.pathname.startsWith('/shorts/')) {
+            videoId = urlObj.pathname.split('/')[2];
+          }
+        } else if (urlObj.hostname.includes('youtu.be')) {
+          videoId = urlObj.pathname.slice(1);
+        }
+      } catch (e) {}
+
+      if (videoId) {
+        cover_image_url = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
+        extractedImages.add(cover_image_url);
+        extractedImages.add(`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`);
+        extractedImages.add(`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`);
+      }
+
+      const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
+      if (oembedRes.ok) {
+        const oembedData = await oembedRes.json();
+        title = oembedData.title || title;
+        if (!videoId) {
+          cover_image_url = oembedData.thumbnail_url || cover_image_url;
+        }
+        description = oembedData.author_name ? `Video by ${oembedData.author_name}` : description;
+      }
+    } catch (e) {
+      console.error("Failed to fetch YouTube oembed", e);
+    }
   }
 
   if (cover_image_url) extractedImages.add(cover_image_url);
@@ -94,38 +122,30 @@ export async function fetchBookmarkData(url: string) {
         // If URL parsing fails, skip this image
         return;
       }
-
+      
       const width = $(el).attr("width");
       const height = $(el).attr("height");
       const className = $(el).attr("class") || "";
       const alt = $(el).attr("alt") || "";
-
-      const srcLower = src.toLowerCase();
-      const classLower = className.toLowerCase();
-      const altLower = alt.toLowerCase();
-
-      const isJunk =
-        srcLower.includes("favicon") ||
-        srcLower.includes("icon") ||
-        srcLower.includes("logo") ||
-        srcLower.includes("spinner") ||
-        srcLower.includes("avatar") ||
-        srcLower.includes("badge") ||
-        srcLower.includes("emoji") ||
-        srcLower.includes("tracker") ||
-        srcLower.includes("pixel") ||
+      
+      const isJunk = 
+        src.includes("favicon") || 
+        src.includes("icon") || 
+        src.includes("logo") || 
+        src.includes("spinner") ||
+        src.includes("avatar") ||
+        src.includes("badge") ||
+        src.includes("emoji") ||
+        src.includes("tracker") ||
+        src.includes("pixel") ||
         src.endsWith(".svg") ||
         src.endsWith(".gif") ||
         src.startsWith("data:image") ||
-        classLower.includes("logo") ||
-        classLower.includes("icon") ||
-        altLower.includes("logo");
-
-      const widthNum = width ? parseInt(width, 10) : NaN;
-      const heightNum = height ? parseInt(height, 10) : NaN;
-      const isTooSmall =
-        (!isNaN(widthNum) && widthNum < MIN_IMAGE_SIZE) ||
-        (!isNaN(heightNum) && heightNum < MIN_IMAGE_SIZE);
+        className.toLowerCase().includes("logo") ||
+        className.toLowerCase().includes("icon") ||
+        alt.toLowerCase().includes("logo");
+        
+      const isTooSmall = (width && parseInt(width) < 100) || (height && parseInt(height) < 100);
 
       if (src.startsWith("http") && !isJunk && !isTooSmall) {
         extractedImages.add(src);
@@ -165,45 +185,4 @@ export async function fetchBookmarkData(url: string) {
     domain,
     suggestedTags
   };
-}
-
-async function handleYouTubeMetadata(url: string, cover_image_url: string, extractedImages: Set<string>): Promise<{cover_image_url: string; title: string; description: string}> {
-  let result = { cover_image_url, title: '', description: '' };
-  try {
-    let videoId = null;
-    try {
-      const urlObj = new URL(url);
-      if (urlObj.hostname.includes('youtube.com')) {
-        videoId = urlObj.searchParams.get('v');
-        if (!videoId && urlObj.pathname.startsWith('/shorts/')) {
-          videoId = urlObj.pathname.split('/')[2];
-        }
-      } else if (urlObj.hostname.includes('youtu.be')) {
-        videoId = urlObj.pathname.slice(1);
-      }
-    } catch (e) {}
-
-    if (videoId) {
-      const maxresUrl = `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`;
-      const hqUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-      const mqUrl = `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-      result.cover_image_url = maxresUrl;
-      extractedImages.add(maxresUrl);
-      extractedImages.add(hqUrl);
-      extractedImages.add(mqUrl);
-    }
-
-    const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-    if (oembedRes.ok) {
-      const oembedData = await oembedRes.json();
-      result.title = oembedData.title || result.title;
-      if (!videoId) {
-        result.cover_image_url = oembedData.thumbnail_url || result.cover_image_url;
-      }
-      result.description = oembedData.author_name ? `Video by ${oembedData.author_name}` : result.description;
-    }
-  } catch (e) {
-    console.error("Failed to fetch YouTube oembed", e);
-  }
-  return result;
 }

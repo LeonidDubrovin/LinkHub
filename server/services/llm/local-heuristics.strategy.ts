@@ -1,5 +1,5 @@
-import { getConfig } from "../../config.js";
-import { BookmarkData, CategorizationResult, ICategorizationStrategy } from "./interfaces.js";
+import { getConfig } from "../../config.ts";
+import { BookmarkData, CategorizationResult, ICategorizationStrategy } from "./interfaces.ts";
 
 export class LocalHeuristicsStrategy implements ICategorizationStrategy {
   getName(): string {
@@ -26,7 +26,7 @@ export class LocalHeuristicsStrategy implements ICategorizationStrategy {
 
      // Try suffix matching (e.g., youtube.com matches *.youtube.com)
      for (const [ruleDomain, collection] of Object.entries(rules)) {
-       if (data.domain.endsWith(`.${ruleDomain}`)) {
+       if (data.domain.endsWith(ruleDomain) && data.domain !== ruleDomain) {
          return {
            collectionNames: [collection],
            tags: []

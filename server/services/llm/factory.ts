@@ -1,5 +1,5 @@
-import { ICategorizationStrategy } from "./interfaces.js";
-import { OpenRouterStrategy } from "./openrouter.strategy.js";
+import { ICategorizationStrategy } from "./interfaces.ts";
+import { OpenRouterStrategy } from "./openrouter.strategy.ts";
 
 export class CategorizationStrategyFactory {
   static create(config: any): ICategorizationStrategy {
