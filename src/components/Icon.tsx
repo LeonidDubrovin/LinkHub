@@ -8,9 +8,9 @@ interface IconProps extends React.SVGProps<SVGSVGElement> {
 }
 
 export const Icon = ({ name, size = 24, color = 'currentColor', ...props }: IconProps) => {
-  const LucideIcon = (LucideIcons as Record<string, React.ComponentType<any>>)[name];
+  const LucideIcon = (LucideIcons as any)[name];
   if (!LucideIcon) {
-    const FallbackIcon = (LucideIcons as Record<string, React.ComponentType<any>>)['CircleHelp'] || (LucideIcons as Record<string, React.ComponentType<any>>)['HelpCircle'];
+    const FallbackIcon = (LucideIcons as any)['CircleHelp'] || (LucideIcons as any)['HelpCircle'];
     if (!FallbackIcon) return null;
     return <FallbackIcon size={size} color={color} {...props} />;
   }

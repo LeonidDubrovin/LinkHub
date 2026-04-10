@@ -142,7 +142,7 @@ export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Boo
   // Fallback to screenshot API if no images found
   return (
     <img 
-      src={`https://image.thum.io/get/width/600/crop/800/${encodeURIComponent(bookmark.url)}`} 
+      src={`https://image.thum.io/get/width/600/crop/800/${bookmark.url}`} 
       alt="Screenshot" 
       className="w-full h-full object-cover" 
       referrerPolicy="no-referrer" 

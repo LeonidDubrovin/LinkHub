@@ -432,7 +432,7 @@ export function SettingsModal({
                         Make sure these match collection names in your database exactly:
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        {['Articles', 'Design', 'Programming', 'Videos', 'Inbox'].map(cat => (
+                        {['Articles', 'Design', 'Programming', 'Videos', 'Library', 'Inbox'].map(cat => (
                           <span key={cat} className="px-2 py-1 bg-white border border-slate-200 rounded text-xs text-slate-600">
                             {cat}
                           </span>

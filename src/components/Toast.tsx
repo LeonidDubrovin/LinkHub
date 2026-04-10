@@ -18,7 +18,7 @@ export function Toast({ toast, onClose }: ToastProps) {
   if (!toast) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300" role="alert" aria-live="assertive">
+    <div className="fixed bottom-4 right-4 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
       <div className={cn(
         "px-4 py-3 rounded-lg shadow-lg border flex items-center gap-3",
         toast.type === 'success' ? "bg-green-50 border-green-200 text-green-800" : 

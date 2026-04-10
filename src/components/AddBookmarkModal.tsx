@@ -81,12 +81,12 @@ export function AddBookmarkModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUrls) return;
     // If no collection selected, we don't pass anything (backend defaults to Inbox)
     const collectionIds = selectedCollectionIds.length > 0 ? selectedCollectionIds : undefined;
-    await onSubmit(newUrls, collectionIds);
+    onSubmit(newUrls, collectionIds);
     setNewUrls("");
     setSelectedCollectionIds([]);
   };
