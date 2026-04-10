@@ -1,9 +1,12 @@
 import Database from "better-sqlite3";
+import os from "os";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import * as tldts from "tldts";
-import { getConfig } from "./config.js";
+import { getConfig } from "./config.ts";
+
+const appName = "LinkHub";
 
 let dataDir = process.env.DATA_DIR;
 if (!dataDir) {
@@ -49,8 +52,6 @@ db.exec(`
     category_id TEXT,
     domain TEXT,
     images_json TEXT,
-    categorization_at DATETIME,
-    categorization_source TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_deleted INTEGER DEFAULT 0,
@@ -105,14 +106,6 @@ db.exec(`
     FOREIGN KEY (bookmark_id) REFERENCES bookmarks(id) ON DELETE CASCADE,
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
   );
-  CREATE INDEX IF NOT EXISTS idx_bc_bookmark ON bookmark_collections(bookmark_id);
-  CREATE INDEX IF NOT EXISTS idx_bc_collection ON bookmark_collections(collection_id);
-  CREATE INDEX IF NOT EXISTS idx_bookmarks_category ON bookmarks(category_id);
-  CREATE INDEX IF NOT EXISTS idx_bookmarks_domain ON bookmarks(domain);
-  CREATE INDEX IF NOT EXISTS idx_bookmarks_deleted ON bookmarks(is_deleted);
-  CREATE INDEX IF NOT EXISTS idx_bt_tag ON bookmark_tags(tag_id);
-  CREATE INDEX IF NOT EXISTS idx_bt_bookmark ON bookmark_tags(bookmark_id);
-  CREATE INDEX IF NOT EXISTS idx_collections_space ON collections(space_id);
   `);
  
  // Migrations for existing databases
@@ -147,6 +140,10 @@ db.exec(`
     } catch (e) {}
   }
 } catch (e) {}
+
+try {
+  db.exec("ALTER TABLE bookmarks ADD COLUMN images_json TEXT");
+} catch (e) { /* ignore if exists */ }
 
 // Insert default categories if empty
 const catCount = db
@@ -212,7 +209,6 @@ const catCount = db
       })();
     } catch (err) {
       console.error("Spaces migration failed:", err);
-      throw err;
     }
   }
 
