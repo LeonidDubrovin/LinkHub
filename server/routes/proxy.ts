@@ -1,5 +1,5 @@
 import express from "express";
-import { getConfig } from "../config.js";
+import { getConfig } from "../config.ts";
 
 function isSafeProxyUrl(urlStr: string): boolean {
   try {

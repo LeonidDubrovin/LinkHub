@@ -1,7 +1,7 @@
 import express from "express";
-import db, { getDataDir } from "../db.js";
-import { getConfig, saveConfig } from "../config.js";
-import { CategorizationService } from "../services/categorizer.js";
+import db, { getDataDir } from "../db.ts";
+import { getConfig, saveConfig } from "../config.ts";
+import { CategorizationService } from "../services/categorizer.ts";
 import fs from "fs";
 import path from "path";
 import {
@@ -9,7 +9,7 @@ import {
   sendError,
   badRequest,
   internalError,
-} from "../utils/api.js";
+} from "../utils/api.ts";
 
 const router = express.Router();
 const categorizer = new CategorizationService();

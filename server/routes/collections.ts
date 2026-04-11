@@ -1,6 +1,6 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import db from "../db.js";
+import db from "../db.ts";
 import {
   sendJson,
   sendError,
@@ -8,7 +8,7 @@ import {
   badRequest,
   internalError,
   validateCollectionIds,
-} from "../utils/api.js";
+} from "../utils/api.ts";
 
 const router = express.Router();
 

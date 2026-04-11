@@ -2,9 +2,9 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
-import db from "../db.js";
-import { fetchBookmarkData } from "../services/scraper.js";
-import { getConfig } from "../config.js";
+import db from "../db.ts";
+import { fetchBookmarkData } from "../services/scraper.ts";
+import { getConfig } from "../config.ts";
 import {
   sendJson,
   sendError,
@@ -16,7 +16,7 @@ import {
   bulkSoftDeleteBookmarks,
   validateCollectionIds,
   buildFilteredBookmarksQuery,
-} from "../utils/api.js";
+} from "../utils/api.ts";
 
 const router = express.Router();
 
