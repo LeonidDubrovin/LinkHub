@@ -1,10 +1,9 @@
 import { app, BrowserWindow, globalShortcut, Menu } from "electron";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// In CJS format, __filename and __dirname are available
+const __dirname = __dirname;
 
 let mainWindow: BrowserWindow | null = null;
 let serverStarted = false;

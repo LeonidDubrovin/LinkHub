@@ -12,7 +12,19 @@
         <h2 style="margin-bottom: 8px;">Loading LinkHub...</h2>
         <p style="color: #64748b; font-size: 14px;">If this takes more than a few seconds, press F12 to open Developer Tools and check the Console for errors.</p>
       </div>
-    </div>
+     </div>
+     <script>
+      window.onerror = function(msg, url, line, col, error) {
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'color:red;padding:20px;background:#fee;border:1px solid red;';
+        pre.textContent = error ? (error.stack || error.toString()) : msg;
+        document.body.appendChild(pre);
+        console.error('Error:', error || msg);
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled rejection:', e.reason);
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
