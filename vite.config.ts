@@ -3,11 +3,6 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
 
-import { defineConfig, loadEnv } from 'vite';
-import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
-import path from 'path';
-
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   
@@ -23,20 +18,20 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5173,
+      port: 5277,
       hmr: {
-        port: 5173,
+        port: 5277,
       },
       watch: {
         usePolling: false,
       },
       proxy: {
         '/api': {
-          target: 'http://localhost:3000',
+          target: 'http://127.0.0.1:3070',
           changeOrigin: true,
         },
         '/cdn-cgi': {
-          target: 'http://localhost:3000',
+          target: 'http://127.0.0.1:3070',
           changeOrigin: true,
         }
       }

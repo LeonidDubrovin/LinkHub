@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "test": "vitest run",
-    "dev:electron": "concurrently \"npm run dev\" \"wait-on tcp:3000 && tsup && cross-env START_SERVER=false electron .\"",
+    "dev:electron": "concurrently \"npm run dev\" \"wait-on tcp:3070 && tsup && cross-env START_SERVER=false electron .\"",
     "build": "vite build && tsup",
     "build:electron": "npm run build && electron-builder",
     "preview": "vite preview",

@@ -8,7 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
-const PORT = 3000;
+const PORT = 3070;
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -147,8 +147,8 @@ export async function startServer(isElectron = false): Promise<number> {
   }
 
   return new Promise<number>((resolve, reject) => {
-    // In production/Electron, use port 0 to get a random free port if 3000 is taken,
-    // or just try 3000 first and fallback. For simplicity, if isElectron is true, we can just use 0.
+    // In production/Electron, use port 0 to get a random free port if 3070 is taken,
+    // or just try 3070 first and fallback. For simplicity, if isElectron is true, we can just use 0.
     // Wait, if we use 0, it will always be random. Let's try PORT first.
     const targetPort = isElectron ? 0 : PORT;
     

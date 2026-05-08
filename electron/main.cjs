@@ -1,13 +1,12 @@
-import { app, BrowserWindow, globalShortcut, Menu } from "electron";
-import path from "path";
-import fs from "fs";
+const { app, BrowserWindow, globalShortcut, Menu } = require("electron");
+const path = require("path");
+const fs = require("fs");
 
-let mainWindow: BrowserWindow | null = null;
+let mainWindow = null;
 let serverStarted = false;
 let serverPort = 38472;
 
 async function createWindow() {
-  // Set DATA_DIR before starting the server so the DB is stored in the correct location
   if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR) {
     process.env.PORTABLE_EXECUTABLE_DIR = path.dirname(app.getPath("exe"));
   }
@@ -31,15 +30,12 @@ async function createWindow() {
     if (customDataDir) {
       process.env.DATA_DIR = customDataDir;
     } else if (app.isPackaged) {
-      // In production, store data next to the executable (portable mode)
       process.env.DATA_DIR = path.join(exeDir, "data");
     } else {
-      // In development, store in the project root
       process.env.DATA_DIR = path.join(process.cwd(), "data");
     }
   }
 
-  // Determine icon path (dist in prod, public in dev)
   let iconPath = path.join(__dirname, "../dist/icon.png");
   if (!fs.existsSync(iconPath)) {
     iconPath = path.join(__dirname, "../public/icon.png");
@@ -49,7 +45,7 @@ async function createWindow() {
     width: 1200,
     height: 800,
     title: "LinkHub",
-    autoHideMenuBar: true, // Hide the top menu bar
+    autoHideMenuBar: true,
     icon: iconPath,
     webPreferences: {
       nodeIntegration: false,
@@ -57,19 +53,15 @@ async function createWindow() {
     },
   });
 
-  // Ensure menu bar is completely removed
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setMenu(null);
 
-   // Start the Express server only once, and ONLY in production
-   // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
    if (app.isPackaged && !serverStarted) {
      try {
-       // @ts-ignore - server.js is generated in the same directory by tsup
-       const { startServer } = await import("./server.js");
+       const { startServer } = await require("../dist-electron/server.js");
        serverPort = await startServer(true);
        serverStarted = true;
-     } catch (e: any) {
+     } catch (e) {
        console.error("Failed to start server:", e);
        mainWindow.loadURL(`data:text/html;charset=utf-8,
          <html>
@@ -81,38 +73,15 @@ async function createWindow() {
            </body>
          </html>
        `);
-       return; // Stop execution, don't try to load the web app
+       return;
      }
    } else if (!app.isPackaged && !serverStarted) {
-     // In development, assume npm run dev is already running on port 3070
      serverPort = 3070;
      serverStarted = true;
    }
 
-   // Load the web app
-   const appUrl = `http://127.0.0.1:${serverPort}`;
-   console.log("Loading app from:", appUrl);
-   mainWindow.loadURL(appUrl);
+   mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
 
-   // Force open DevTools for debugging white screen issues
-   mainWindow.webContents.openDevTools();
-
-   // Log when page starts loading
-   mainWindow.webContents.on('did-start-loading', () => {
-     console.log("Page started loading");
-   });
-
-   // Log when page finishes loading
-   mainWindow.webContents.on('did-finish-load', () => {
-     console.log("Page finished loading");
-   });
-
-   // Log any console messages from the renderer
-   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-     console.log(`[Renderer Console] Level ${level}: ${message} (${sourceId}:${line})`);
-   });
-
-   // Add a context menu to easily open DevTools
    mainWindow.webContents.on('context-menu', (e, props) => {
      const menu = Menu.buildFromTemplate([
       {
@@ -164,8 +133,18 @@ async function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  globalShortcut.register('CommandOrControl+Shift+I', () => mainWindow?.webContents.toggleDevTools());
-  globalShortcut.register('F12', () => mainWindow?.webContents.toggleDevTools());
+
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    if (mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
+
+  globalShortcut.register('F12', () => {
+    if (mainWindow) {
+      mainWindow.webContents.toggleDevTools();
+    }
+  });
 });
 
 app.on("will-quit", () => {
@@ -173,9 +152,13 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
 
 app.on("activate", () => {
-  if (mainWindow === null) createWindow();
+  if (mainWindow === null) {
+    createWindow();
+  }
 });
