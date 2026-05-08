@@ -16,3 +16,31 @@ linkhub.config.json
 # Игнорируем всё в .github кроме workflows (workflows нужно версировать)
 .github/*
 !.github/workflows/
+
+# Temporary and debug files
+*.bak
+*.backup
+*.backup2
+tsconfig.tsbuildinfo
+nul
+
+# Test and debug scripts
+test-*.ts
+test-*.cjs
+test-*.ps1
+debug-*.ts
+minimal-*.ts
+simple-*.ts
+electron-*.cjs
+electron-*.json
+run-*.ps1
+start-*.ps1
+server-keep.cjs
+
+# Temporary directories
+.kilo/
+electron-app/
+electron-test/
+
+# Database files
+*.db
