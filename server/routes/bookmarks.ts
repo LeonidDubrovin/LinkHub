@@ -4,6 +4,7 @@ import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import db from "../db.ts";
 import { fetchBookmarkData } from "../services/scraper.ts";
+import { CategorizationService } from "../services/categorizer.ts";
 import { getConfig } from "../config.ts";
 import {
   sendJson,
@@ -19,6 +20,7 @@ import {
 } from "../utils/api.ts";
 
 const router = express.Router();
+const categorizer = new CategorizationService();
 
 async function createBookmark(url: string, options: { collectionIds?: string[] } = {}) {
   try { new URL(url); } catch (e) {
@@ -44,6 +46,13 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
     for (const colId of collectionIds) insertLink.run(bookmarkId, colId);
   })();
+
+  const config = getConfig();
+  if (config.localHeuristics?.enabled || (config.llm?.enabled && config.llm?.autoCategorizeOnAdd)) {
+    categorizer.categorizeBookmark(bookmarkId, false).catch((e) => {
+      console.warn(`Auto-categorization failed for ${bookmarkId}:`, e.message);
+    });
+  }
 
   return { id: bookmarkId, title: url, success: true, needsRefresh: true, collectionIds };
 }
@@ -148,6 +157,14 @@ router.post("/bookmarks/:id/refresh", async (req, res) => {
       } else { tagId = tag.id; }
       db.prepare("INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)").run(id, tagId);
     }
+
+    const config = getConfig();
+    if (config.llm?.enabled && config.llm?.autoCategorizeOnAdd) {
+      categorizer.categorizeBookmark(id, true).catch((e) => {
+        console.warn(`Auto-categorization failed for ${id}:`, e.message);
+      });
+    }
+
     res.json({ success: true, bookmark: { id, ...data } });
   } catch (error: any) {
     console.error("Error refreshing bookmark:", error);

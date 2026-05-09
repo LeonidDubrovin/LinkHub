@@ -4,7 +4,6 @@ const DEFAULT_INSPECTOR_WIDTH = 400;
 
 import { useState, useEffect, useCallback } from "react";
 import { Bookmark } from "../types";
-import { getYouTubeId } from "../utils";
 
 export function useInspector() {
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
@@ -23,7 +22,6 @@ export function useInspector() {
     byline: string;
   } | null>(null);
   const [isReaderLoading, setIsReaderLoading] = useState(false);
-  const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!isDragging) return;
@@ -97,10 +95,7 @@ export function useInspector() {
     setReaderContent,
     isReaderLoading,
     setIsReaderLoading,
-    refreshingBookmarkIds,
-    setRefreshingBookmarkIds,
     loadReaderView,
     handleMouseDown,
-    getYouTubeId,
   };
 }

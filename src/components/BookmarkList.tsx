@@ -8,15 +8,6 @@ import { Bookmark, Collection, Tag } from "../types";
 type SortBy = "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc";
 type FilterBy = "all" | "has_images" | "has_summary" | "has_content";
 
-// Constants for UI dimensions
-const HEADER_HEIGHT = 56;
-const SEARCH_INPUT_MIN_WIDTH = 150;
-const GRID_ITEM_MIN_WIDTH_SMALL = 180;
-const GRID_ITEM_MIN_WIDTH_MEDIUM = 240;
-const GRID_ITEM_MIN_WIDTH_LARGE = 320;
-const REFRESH_OVERLAY_SIZE = 24;
-const TEXT_SIZE_SMALL = 10;
-
 interface BookmarkListProps {
   filteredBookmarks: Bookmark[];
   viewMode: "list" | "grid";
@@ -74,7 +65,7 @@ export function BookmarkList({
 }: BookmarkListProps) {
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-white">
-      <div className={`min-h-[${HEADER_HEIGHT}px] py-3 border-b border-slate-200 flex flex-wrap items-center justify-between px-4 flex-shrink-0 gap-3`}>
+      <div className="min-h-[56px] py-3 border-b border-slate-200 flex flex-wrap items-center justify-between px-4 flex-shrink-0 gap-3">
         <div className="flex items-center gap-3">
           <input
             type="checkbox"
@@ -158,7 +149,7 @@ export function BookmarkList({
 
           <div className="hidden sm:block w-px h-6 bg-slate-200 mx-1"></div>
 
-          <div className="relative flex-grow min-w-[${SEARCH_INPUT_MIN_WIDTH}px] max-w-xs">
+          <div className="relative flex-grow min-w-[150px] max-w-xs">
             <Search
               size={16}
               className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -227,9 +218,9 @@ export function BookmarkList({
           <div
             className={cn(
               viewMode === "grid"
-? itemSize === "small" ? `grid grid-cols-[repeat(auto-fill,minmax(${GRID_ITEM_MIN_WIDTH_SMALL}px,1fr))] gap-3` :
-                   itemSize === "large" ? `grid grid-cols-[repeat(auto-fill,minmax(${GRID_ITEM_MIN_WIDTH_LARGE}px,1fr))] gap-5` :
-                   `grid grid-cols-[repeat(auto-fill,minmax(${GRID_ITEM_MIN_WIDTH_MEDIUM}px,1fr))] gap-4`
+                ? itemSize === "small" ? "grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3" :
+                    itemSize === "large" ? "grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-5" :
+                    "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4"
                 : "flex flex-col gap-2",
             )}
           >
@@ -259,7 +250,7 @@ export function BookmarkList({
               >
                 {refreshingBookmarkIds.has(bookmark.id) && (
                   <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/40 backdrop-blur-[1px]">
-                    <RefreshCw size={REFRESH_OVERLAY_SIZE} className="animate-spin text-blue-500 drop-shadow-sm" />
+                    <RefreshCw size={24} className="animate-spin text-blue-500 drop-shadow-sm" />
                   </div>
                 )}
                 <div
@@ -323,7 +314,7 @@ export function BookmarkList({
                       {(bookmark.collections || []).slice(0, 2).map((coll: Collection) => (
                        <span
                          key={coll.id}
-                          className={`text-[${TEXT_SIZE_SMALL}px] font-medium px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 flex items-center gap-1`}
+                          className="text-[10px] font-medium px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 flex items-center gap-1"
                        >
                          <div
                            className="w-1.5 h-1.5 rounded-full"
@@ -333,14 +324,14 @@ export function BookmarkList({
                        </span>
                      ))}
                      {(bookmark.collections || []).length > 2 && (
-                        <span className={`text-[${TEXT_SIZE_SMALL}px] text-slate-400`}>
+                         <span className="text-[10px] text-slate-400">
                          +{(bookmark.collections || []).length - 2} more
                        </span>
                      )}
                      {bookmark.tags?.slice(0, 2).map((tag) => (
                        <span
                          key={tag.id}
-                          className={`text-[${TEXT_SIZE_SMALL}px] text-slate-400`}
+                          className="text-[10px] text-slate-400"
                        >
                          #{tag.name}
                        </span>

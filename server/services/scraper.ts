@@ -2,7 +2,6 @@ import * as cheerio from "cheerio";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
 import * as tldts from "tldts";
-import { categorizeWithAI } from "./ai.ts";
 import { getConfig } from "../config.ts";
 import { getDataDir } from "../db.ts";
 import fs from "fs";
@@ -252,22 +251,14 @@ export async function fetchBookmarkData(url: string) {
     downloadAndCacheFavicon(domain, url).catch(() => {});
   }
 
-  // 4. Smart Categorization with Gemini
-  const { category_id, suggestedTags } = await categorizeWithAI(
-    url,
-    title,
-    description,
-    content_text
-  );
-
   return {
     title: title.trim(),
     description: description.trim(),
     cover_image_url,
     images_json,
     content_text,
-    category_id,
+    category_id: null,
     domain,
-    suggestedTags
+    suggestedTags: []
   };
 }
