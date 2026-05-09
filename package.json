@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "test": "vitest run",
-    "dev:electron": "concurrently \"npm run dev\" \"wait-on file:.server-port && tsup && node scripts/electron-dev.mjs\"",
+    "dev:electron": "concurrently \"npm run dev\" \"node scripts/electron-dev-setup.mjs && wait-on file:.server-port && tsup && node scripts/electron-dev.mjs\"",
     "build": "vite build && tsup",
     "build:electron": "npm run build && electron-builder",
     "preview": "vite preview",

@@ -118,7 +118,7 @@ export async function startServer(isElectron = false): Promise<number> {
   if (process.env.NODE_ENV !== "production" && !isElectron) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: { port: 24679 } },
       appType: "spa",
     });
     // Vite middleware handles non-API requests (SPA serving, HMR, etc.)

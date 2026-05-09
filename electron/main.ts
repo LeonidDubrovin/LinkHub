@@ -101,10 +101,30 @@ async function createWindow() {
     serverStarted = true;
   }
 
-  // Load the web app
+  // Load the web app (with retry in dev mode for server startup race)
   const appUrl = `http://127.0.0.1:${serverPort}`;
   console.log("Loading app from:", appUrl);
-  mainWindow.loadURL(appUrl);
+
+  const loadWithRetry = async (retries = 10, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const resp = await fetch(appUrl, { method: "HEAD" });
+        if (resp.ok || resp.status < 500) {
+          mainWindow?.loadURL(appUrl);
+          return;
+        }
+      } catch {}
+      console.log(`Server not ready yet, retrying (${i + 1}/${retries})...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+    mainWindow?.loadURL(appUrl);
+  };
+
+  if (!app.isPackaged) {
+    loadWithRetry();
+  } else {
+    mainWindow.loadURL(appUrl);
+  }
 
   if (!app.isPackaged) {
     mainWindow.webContents.openDevTools();
