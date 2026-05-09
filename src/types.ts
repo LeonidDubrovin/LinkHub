@@ -18,6 +18,7 @@ export interface Collection {
   color: string;
   space_id: string;
   parent_id: string | null;
+  sort_order: number;
   created_at: string;
   bookmarkCount?: number;
   children?: Collection[];

@@ -93,6 +93,7 @@ db.exec(`
     color TEXT,
     space_id TEXT NOT NULL,
     parent_id TEXT,
+    sort_order INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE,
     FOREIGN KEY (parent_id) REFERENCES collections(id)
@@ -141,7 +142,12 @@ db.exec(`
   }
 } catch (e) {}
 
-// Insert default categories if empty
+ // Migration: add sort_order column if missing
+try {
+  db.exec("ALTER TABLE collections ADD COLUMN sort_order INTEGER DEFAULT 0");
+} catch (e) { /* ignore if exists */ }
+
+ // Insert default categories if empty
 const catCount = db
   .prepare("SELECT COUNT(*) as count FROM categories")
   .get() as { count: number };

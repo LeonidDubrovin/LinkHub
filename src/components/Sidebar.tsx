@@ -1,9 +1,9 @@
 import React from "react";
 import { cn } from "../lib/utils";
-import { Icon } from "./Icon";
-import { FaviconImg } from "./FaviconImg";
-import { Globe, Settings, Plus, Pin, PinOff, BookOpen } from "lucide-react";
+import { Globe, Settings, Plus, BookOpen } from "lucide-react";
 import { SpaceWithCollections, Domain, Tag, Collection } from "../types";
+import { DomainItem } from "./DomainItem";
+import { CollectionTree, DragHandlers } from "./CollectionTree";
 
 interface SidebarProps {
   treeSpaces: SpaceWithCollections[];
@@ -22,7 +22,10 @@ interface SidebarProps {
   onSelectTag: (id: string | null) => void;
   onSelectDomain: (domain: string | null) => void;
   togglePinDomain: (domain: string, e: React.MouseEvent) => void;
-  renderCollections: (colls: Collection[], level: number) => React.ReactNode;
+  onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
+  dropTargetCollectionId: string | null;
+  collectionBookmarkCounts: Map<string, number>;
+  dragHandlers: DragHandlers;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
 }
@@ -44,7 +47,10 @@ export function Sidebar({
   onSelectTag,
   onSelectDomain,
   togglePinDomain,
-  renderCollections,
+  onCollectionContextMenu,
+  dropTargetCollectionId,
+  collectionBookmarkCounts,
+  dragHandlers,
   setIsSettingsOpen,
   setIsAdding,
 }: SidebarProps) {
@@ -105,7 +111,6 @@ export function Sidebar({
           </button>
         </div>
 
-        {/* Spaces & Collections Tree */}
         <div className="px-3 mb-4">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">
@@ -146,7 +151,18 @@ export function Sidebar({
                 <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
                   {space.name}
                 </div>
-                {space.collections && renderCollections(space.collections, 0)}
+                {space.collections && (
+                  <CollectionTree
+                    collections={space.collections}
+                    level={0}
+                    selectedCollectionId={selectedCollectionId}
+                    dropTargetCollectionId={dropTargetCollectionId}
+                    collectionBookmarkCounts={collectionBookmarkCounts}
+                    onSelect={(id) => { onSelectCollection(id); onSelectTag(null); onSelectDomain(null); }}
+                    onContextMenu={onCollectionContextMenu}
+                    dragHandlers={dragHandlers}
+                  />
+                )}
               </div>
             ))
           )}
@@ -160,33 +176,16 @@ export function Sidebar({
             {domains
               .filter((d) => pinnedDomains.includes(d.domain))
               .map((d) => (
-                <button
-                  key={`pinned-${d.domain}`}
-                  onClick={() => {
-                    onSelectDomain(d.domain);
-                    onSelectCollection(null);
-                    onSelectTag(null);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
-                    selectedDomain === d.domain
-                      ? "bg-blue-100 text-blue-700 font-medium"
-                      : "hover:bg-slate-200 text-slate-700",
-                  )}
-                >
-                  <FaviconImg domain={d.domain} />
-                  <span className="truncate flex-1 text-left">{d.domain}</span>
-                  <span className="text-xs text-slate-400 font-medium group-hover:hidden">
-                    {d.count}
-                  </span>
-                  <div
-                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-slate-600"
-                    onClick={(e) => togglePinDomain(d.domain, e)}
-                    title="Unpin resource"
-                  >
-                    <PinOff size={14} />
-                  </div>
-                </button>
+                <div key={`pinned-${d.domain}`}>
+                  <DomainItem
+                    domain={d.domain}
+                    count={d.count}
+                    isSelected={selectedDomain === d.domain}
+                    isPinned={true}
+                    onSelect={(domain) => { onSelectDomain(domain); onSelectCollection(null); onSelectTag(null); }}
+                    onTogglePin={togglePinDomain}
+                  />
+                </div>
               ))}
           </div>
         )}
@@ -199,33 +198,16 @@ export function Sidebar({
             {domains
               .filter((d) => !pinnedDomains.includes(d.domain))
               .map((d) => (
-                <button
-                  key={d.domain}
-                  onClick={() => {
-                    onSelectDomain(d.domain);
-                    onSelectCollection(null);
-                    onSelectTag(null);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group",
-                    selectedDomain === d.domain
-                      ? "bg-blue-100 text-blue-700 font-medium"
-                      : "hover:bg-slate-200 text-slate-700",
-                  )}
-                >
-                  <FaviconImg domain={d.domain} />
-                  <span className="truncate flex-1 text-left">{d.domain}</span>
-                  <span className="text-xs text-slate-400 font-medium group-hover:hidden">
-                    {d.count}
-                  </span>
-                  <div
-                    className="hidden group-hover:flex items-center justify-center text-slate-400 hover:text-slate-600"
-                    onClick={(e) => togglePinDomain(d.domain, e)}
-                    title="Pin resource"
-                  >
-                    <Pin size={14} />
-                  </div>
-                </button>
+                <div key={d.domain}>
+                  <DomainItem
+                    domain={d.domain}
+                    count={d.count}
+                    isSelected={selectedDomain === d.domain}
+                    isPinned={false}
+                    onSelect={(domain) => { onSelectDomain(domain); onSelectCollection(null); onSelectTag(null); }}
+                    onTogglePin={togglePinDomain}
+                  />
+                </div>
               ))}
           </div>
         )}

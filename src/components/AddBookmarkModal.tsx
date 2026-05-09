@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Icon } from './Icon';
 import { Collection } from '../types';
+import { buildCollectionTree } from '../utils/buildCollectionTree';
 
 interface AddBookmarkModalProps {
   isOpen: boolean;
@@ -23,17 +24,7 @@ export function AddBookmarkModal({
   const [newUrls, setNewUrls] = useState("");
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>(defaultCollectionIds);
 
-  // Build tree from flat collections list
-  const buildCollectionTree = (items: Collection[], parentId: string | null = null): Collection[] => {
-    return items
-      .filter(item => item.parent_id === parentId)
-      .map(item => ({
-        ...item,
-        children: buildCollectionTree(items, item.id)
-      }));
-  };
-
-  const treeCollections = React.useMemo(() => buildCollectionTree(collections), [collections]);
+  const treeCollections = useMemo(() => buildCollectionTree(collections), [collections]);
 
   const renderCollectionNode = (coll: Collection, level: number) => (
     <div key={coll.id} style={{ paddingLeft: `${level * 12}px` }}>

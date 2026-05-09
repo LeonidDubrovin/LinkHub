@@ -4,7 +4,9 @@ import { format } from "date-fns";
 import { cn } from "../lib/utils";
 import { getDomain } from "../utils";
 import { FaviconImg } from "./FaviconImg";
-import { Bookmark, Collection } from "../types";
+import { Bookmark, Collection, Tag } from "../types";
+import { CollectionCheckboxTree } from "./CollectionCheckboxTree";
+import { DragHandlers } from "./CollectionTree";
 
 interface ReaderContent {
   title: string;
@@ -26,7 +28,6 @@ interface InspectorPanelProps {
   isEditingCollections: boolean;
   selectedCollectionIdsForEdit: string[];
   allCollectionsTree: Collection[];
-  collectionBookmarkCounts: Map<string, number>;
   onTabChange: (tab: "details" | "reader" | "web" | "video") => void;
   onClose: () => void;
   onResizeStart: (e: React.MouseEvent) => void;
@@ -38,7 +39,7 @@ interface InspectorPanelProps {
   onUpdateBookmarkCollections: (bookmarkId: string, collectionIds: string[]) => void;
   onToggleEditingCollections: () => void;
   onSelectCollectionForEdit: (id: string, checked: boolean) => void;
-  renderCollectionCheckbox: (coll: Collection, level: number) => React.ReactNode;
+  dragHandlers: DragHandlers;
   getYouTubeId: (url: string) => string | null;
 }
 
@@ -56,7 +57,6 @@ export function InspectorPanel({
   isEditingCollections,
   selectedCollectionIdsForEdit,
   allCollectionsTree,
-  collectionBookmarkCounts,
   onTabChange,
   onClose,
   onResizeStart,
@@ -68,9 +68,9 @@ export function InspectorPanel({
   onUpdateBookmarkCollections,
   onToggleEditingCollections,
   onSelectCollectionForEdit,
-  renderCollectionCheckbox,
+  dragHandlers,
   getYouTubeId,
-}: InspectorPanelProps) {
+  }: InspectorPanelProps) {
   if (!selectedBookmark || !isInspectorOpen) {
     return null;
   }
@@ -80,7 +80,6 @@ export function InspectorPanel({
       className="relative border-l border-slate-200 bg-white flex flex-col flex-shrink-0 shadow-[-4px_0_24px_rgba(0,0,0,0.02)]"
       style={{ width: `${inspectorWidth}px`, minWidth: '250px', maxWidth: 'calc(100vw - 300px)' }}
     >
-      {/* Resizer Handle */}
       <div
         className="absolute left-0 top-0 bottom-0 w-6 -ml-3 cursor-col-resize z-50 group flex justify-center"
         onMouseDown={(e) => {
@@ -344,12 +343,18 @@ export function InspectorPanel({
                     {allCollectionsTree.length === 0 ? (
                       <div className="text-xs text-slate-400 px-2">No collections</div>
                     ) : (
-                      allCollectionsTree.map(coll => renderCollectionCheckbox(coll, 0))
+                      <CollectionCheckboxTree
+                        collections={allCollectionsTree}
+                        level={0}
+                        selectedIds={selectedCollectionIdsForEdit}
+                        onToggle={onSelectCollectionForEdit}
+                        dragHandlers={dragHandlers}
+                      />
                     )}
                   </div>
                 ) : (
                   <div className="flex flex-col gap-1">
-                    {(selectedBookmark.collections || []).map((coll: any) => (
+                    {selectedBookmark.collections.map((coll: Collection) => (
                       <div key={coll.id} className="flex items-center gap-2 text-sm text-slate-700">
                         <div
                           className="w-2 h-2 rounded-full"
@@ -358,7 +363,7 @@ export function InspectorPanel({
                         {coll.name}
                       </div>
                     ))}
-                    {(selectedBookmark.collections || []).length === 0 && (
+                    {selectedBookmark.collections.length === 0 && (
                       <span className="text-sm text-slate-400">No collections</span>
                     )}
                   </div>
@@ -383,7 +388,7 @@ export function InspectorPanel({
                   Tags
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {selectedBookmark.tags.map((tag: any) => (
+                  {selectedBookmark.tags.map((tag: Tag) => (
                     <span
                       key={tag.id}
                       className="text-xs px-2 py-1 bg-slate-100 text-slate-600 rounded-md border border-slate-200"

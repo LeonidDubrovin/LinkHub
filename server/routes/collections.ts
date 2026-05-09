@@ -24,7 +24,7 @@ router.get("/collections", (req, res) => {
       query += " WHERE c.space_id = ?";
       params.push(spaceId);
     }
-    query += " ORDER BY c.name";
+    query += " ORDER BY c.sort_order ASC, c.name ASC";
     res.json(db.prepare(query).all(...params));
   } catch (error: any) {
     internalError(res, error);
@@ -35,9 +35,12 @@ router.post("/collections", (req, res) => {
   try {
     const { name, icon, color, space_id, parent_id } = req.body;
     if (!name || !space_id) return badRequest(res, "Name and space_id are required");
+    const maxOrder = db.prepare(
+      "SELECT COALESCE(MAX(sort_order), -1) as maxOrder FROM collections WHERE space_id = ? AND parent_id IS ?"
+    ).get(space_id, parent_id || null) as { maxOrder: number };
     const id = uuidv4();
-    db.prepare("INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)")
-      .run(id, name, icon || "Folder", color || null, space_id, parent_id || null);
+    db.prepare("INSERT INTO collections (id, name, icon, color, space_id, parent_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(id, name, icon || "Folder", color || null, space_id, parent_id || null, maxOrder.maxOrder + 1);
     const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
     sendJson(res, collection);
   } catch (error: any) {
@@ -48,12 +51,30 @@ router.post("/collections", (req, res) => {
 router.put("/collections/:id", (req, res) => {
   try {
     const { id } = req.params;
-    const { name, icon, color, parent_id } = req.body;
-    db.prepare("UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ? WHERE id = ?")
-      .run(name, icon, color, parent_id || null, id);
+    const { name, icon, color, parent_id, sort_order } = req.body;
+    const existing = db.prepare("SELECT * FROM collections WHERE id = ?").get(id) as any;
+    if (!existing) return notFound(res, "Collection not found");
+    db.prepare("UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ?, sort_order = ? WHERE id = ?")
+      .run(name ?? existing.name, icon ?? existing.icon, color ?? existing.color, parent_id !== undefined ? (parent_id || null) : existing.parent_id, sort_order !== undefined ? sort_order : existing.sort_order, id);
     const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
     if (!collection) return notFound(res, "Collection not found");
     sendJson(res, collection);
+  } catch (error: any) {
+    internalError(res, error);
+  }
+});
+
+router.put("/collections/reorder", (req, res) => {
+  try {
+    const { orders } = req.body;
+    if (!Array.isArray(orders)) return badRequest(res, "orders array is required");
+    db.transaction(() => {
+      const update = db.prepare("UPDATE collections SET sort_order = ? WHERE id = ?");
+      for (let i = 0; i < orders.length; i++) {
+        update.run(i, orders[i]);
+      }
+    })();
+    sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);
   }
