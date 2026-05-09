@@ -6,6 +6,8 @@ let mainWindow = null;
 let serverStarted = false;
 let serverPort = 38472;
 
+process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = "true";
+
 async function createWindow() {
   if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR) {
     process.env.PORTABLE_EXECUTABLE_DIR = path.dirname(app.getPath("exe"));
@@ -60,7 +62,7 @@ async function createWindow() {
   // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
   if (app.isPackaged && !serverStarted) {
     try {
-      const { startServer } = await require("./server.js");
+      const { startServer } = await import("./server.js");
       serverPort = await startServer(true);
       serverStarted = true;
     } catch (e) {
@@ -78,7 +80,15 @@ async function createWindow() {
       return;
     }
   } else if (!app.isPackaged && !serverStarted) {
-    serverPort = 3070;
+    const portFile = path.join(process.cwd(), ".server-port");
+    try {
+      const portStr = fs.readFileSync(portFile, "utf-8").trim();
+      serverPort = parseInt(portStr, 10);
+      console.log("Dev server port from file:", serverPort);
+    } catch {
+      serverPort = 3070;
+      console.log("Port file not found, falling back to default port 3070");
+    }
     serverStarted = true;
   }
 
@@ -86,19 +96,9 @@ async function createWindow() {
   console.log("Loading app from:", appUrl);
   mainWindow.loadURL(appUrl);
 
-  mainWindow.webContents.openDevTools();
-
-  mainWindow.webContents.on('did-start-loading', () => {
-    console.log("Page started loading");
-  });
-
-  mainWindow.webContents.on('did-finish-load', () => {
-    console.log("Page finished loading");
-  });
-
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`[Renderer Console] Level ${level}: ${message} (${sourceId}:${line})`);
-  });
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools();
+  }
 
   mainWindow.webContents.on('context-menu', (e, props) => {
     const menu = Menu.buildFromTemplate([

@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import db, { getDataDir } from "../db.js";
-import { fetchBookmarkData } from "../services/scraper.js";
+import { fetchBookmarkData, getFaviconPath, downloadAndCacheFavicon } from "../services/scraper.js";
 import { getConfig, saveConfig } from "../config.js";
 import { CategorizationService } from "../services/categorizer.js";
 import fs from "fs";
@@ -64,7 +64,7 @@ router.post("/settings", (req, res) => {
 
     // Note: To fully apply this, the app needs to be restarted.
     // We can copy the current database to the new location if it doesn't exist there.
-    const currentDbPath = path.join(getDataDir(), "bookmarks.db");
+    const currentDbPath = path.join(getDataDir()!, "bookmarks.db");
     const newDbPath = path.join(dataDir, "bookmarks.db");
 
     if (fs.existsSync(currentDbPath) && !fs.existsSync(newDbPath)) {
@@ -82,7 +82,7 @@ router.post("/settings", (req, res) => {
 router.post("/llm/test-connection", async (req, res) => {
   try {
     const { provider, apiKey, model } = req.body;
-    
+
     if (!apiKey) {
       return res.status(400).json({ success: false, error: "API key required" });
     }
@@ -100,6 +100,26 @@ router.post("/llm/test-connection", async (req, res) => {
       } else {
         const error = await response.text();
         res.status(400).json({ success: false, error: `OpenRouter error: ${error}` });
+      }
+    } else if (provider === 'gemini') {
+      // Test Gemini connection
+      if (!process.env.GEMINI_API_KEY && !apiKey) {
+        return res.status(400).json({ success: false, error: "Gemini API key required" });
+      }
+      res.json({ success: true, message: "Gemini connection test not fully implemented" });
+    } else if (provider === 'anthropic') {
+      // Test Anthropic connection
+      const response = await fetch("https://api.anthropic.com/v1/models", {
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "anthropic-version": "2023-06-01"
+        }
+      });
+      if (response.ok) {
+        res.json({ success: true, message: "Connected to Anthropic successfully" });
+      } else {
+        const error = await response.text();
+        res.status(400).json({ success: false, error: `Anthropic error: ${error}` });
       }
     } else {
       res.status(400).json({ success: false, error: `Unsupported provider: ${provider}` });
@@ -124,9 +144,9 @@ router.post("/bookmarks/:id/categorize", async (req, res) => {
   try {
     const { id } = req.params;
     const { force } = req.body;
-    
+
     const result = await categorizer.categorizeBookmark(id, force ?? false);
-    
+
     if (result.success) {
       // Return updated bookmark
       const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(id) as any;
@@ -155,7 +175,7 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
  router.get("/spaces", (req, res) => {
    try {
      const spaces = db.prepare(`
-       SELECT s.*, 
+       SELECT s.*,
          (SELECT COUNT(*) FROM collections WHERE space_id = s.id) as collectionCount
        FROM spaces s
        ORDER BY s.name
@@ -227,19 +247,19 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
    try {
      const { spaceId } = req.query;
      let query = `
-       SELECT c.*, 
+       SELECT c.*,
          (SELECT COUNT(*) FROM bookmark_collections bc WHERE bc.collection_id = c.id) as bookmarkCount
        FROM collections c
      `;
      const params: any[] = [];
-     
+
      if (spaceId) {
        query += " WHERE c.space_id = ?";
        params.push(spaceId);
      }
-     
+
      query += " ORDER BY c.name";
-     
+
      const collections = db.prepare(query).all(...params);
      res.json(collections);
    } catch (error: any) {
@@ -348,8 +368,11 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
        insert.run(id, colId);
      }
 
-     // Update legacy category_id to first collection for backward compatibility
-     db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], id);
+      if (collectionIds.length > 0) {
+        db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], id);
+      } else {
+        db.prepare("UPDATE bookmarks SET category_id = NULL WHERE id = ?").run(id);
+      }
 
      const collections = db.prepare(`
        SELECT c.* FROM collections c
@@ -360,13 +383,13 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
    } catch (error: any) {
      res.status(500).json({ error: error.message });
    }
- });
+  });
 
  router.delete("/bookmarks/:id/collections/:collectionId", (req, res) => {
    try {
      const { id, collectionId } = req.params;
      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ? AND collection_id = ?").run(id, collectionId);
-     
+
      // If removed collection was the legacy category_id, clear it or set to another
      const bookmark = db.prepare("SELECT category_id FROM bookmarks WHERE id = ?").get(id) as any;
      if (bookmark && bookmark.category_id === collectionId) {
@@ -375,22 +398,54 @@ router.post("/bookmarks/categorize-all", async (req, res) => {
        const newCatId = another ? another.collection_id : null;
        db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(newCatId, id);
      }
-     
+
      res.json({ success: true });
    } catch (error: any) {
      res.status(500).json({ error: error.message });
    }
-  });
+ });
+
+router.get("/favicons/:domain", async (req, res) => {
+  const { domain } = req.params;
+  const filePath = getFaviconPath(domain);
+
+  if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+    return res.sendFile(filePath);
+  }
+
+  const success = await downloadAndCacheFavicon(domain);
+  if (success && fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+
+  res.status(204).end();
+});
 
 router.get("/domains", (req, res) => {
   const domains = db.prepare(`
-    SELECT domain, COUNT(*) as count 
-    FROM bookmarks 
-    WHERE is_deleted = 0 AND domain IS NOT NULL 
-    GROUP BY domain 
+    SELECT domain, COUNT(*) as count
+    FROM bookmarks
+    WHERE is_deleted = 0 AND domain IS NOT NULL
+    GROUP BY domain
     ORDER BY count DESC
   `).all();
   res.json(domains);
+});
+
+router.get("/tags", (req, res) => {
+  try {
+    const tags = db.prepare(`
+      SELECT t.*, COUNT(bt.bookmark_id) as bookmarkCount
+      FROM tags t
+      LEFT JOIN bookmark_tags bt ON t.id = bt.tag_id
+      LEFT JOIN bookmarks b ON bt.bookmark_id = b.id AND b.is_deleted = 0
+      GROUP BY t.id
+      ORDER BY bookmarkCount DESC, t.name
+    `).all();
+    res.json(tags);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 router.get("/bookmarks", (req, res) => {
@@ -407,7 +462,7 @@ router.get("/bookmarks", (req, res) => {
 
   // Base query (keep legacy category joins)
   let query = `
-    SELECT b.*, c.name as category_name, c.color as category_color 
+    SELECT b.*, c.name as category_name, c.color as category_color
     FROM bookmarks b
     LEFT JOIN categories c ON b.category_id = c.id
     WHERE b.is_deleted = 0
@@ -425,8 +480,8 @@ router.get("/bookmarks", (req, res) => {
       )
     `;
     query = cte + query + ` AND EXISTS (
-      SELECT 1 FROM bookmark_collections bc 
-      WHERE bc.bookmark_id = b.id 
+      SELECT 1 FROM bookmark_collections bc
+      WHERE bc.bookmark_id = b.id
         AND bc.collection_id IN (SELECT id FROM targetCollections)
     )`;
     params.push(...collIds);
@@ -442,8 +497,8 @@ router.get("/bookmarks", (req, res) => {
       )
     `;
     query = spaceCte + query + ` AND EXISTS (
-      SELECT 1 FROM bookmark_collections bc 
-      WHERE bc.bookmark_id = b.id 
+      SELECT 1 FROM bookmark_collections bc
+      WHERE bc.bookmark_id = b.id
         AND bc.collection_id IN (SELECT id FROM spaceCollections)
     )`;
     params.push(String(spaceId));
@@ -471,12 +526,12 @@ router.get("/bookmarks", (req, res) => {
   const bookmarkIds = bookmarks.map(b => b.id);
   const allTags: any[] = [];
   const chunkSize = 500;
-  
+
   for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
     const chunk = bookmarkIds.slice(i, i + chunkSize);
     const placeholders = chunk.map(() => '?').join(',');
     const tagsQuery = `
-      SELECT bt.bookmark_id, t.* 
+      SELECT bt.bookmark_id, t.*
       FROM tags t
       JOIN bookmark_tags bt ON t.id = bt.tag_id
       WHERE bt.bookmark_id IN (${placeholders})
@@ -491,7 +546,7 @@ router.get("/bookmarks", (req, res) => {
     const chunk = bookmarkIds.slice(i, i + chunkSize);
     const placeholders = chunk.map(() => '?').join(',');
     const collQuery = `
-      SELECT bc.bookmark_id, c.* 
+      SELECT bc.bookmark_id, c.*
       FROM bookmark_collections bc
       JOIN collections c ON bc.collection_id = c.id
       WHERE bc.bookmark_id IN (${placeholders})
@@ -549,30 +604,31 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
      domain = new URL(url).hostname;
    } catch (e) {}
 
-   const insertBookmark = db.prepare(`
-     INSERT INTO bookmarks (id, url, title, domain)
-     VALUES (?, ?, ?, ?)
-   `);
-
-   insertBookmark.run(bookmarkId, url, url, domain);
-
    // Assign collections (default to Inbox)
    const collectionIds = options.collectionIds && options.collectionIds.length > 0
      ? options.collectionIds
      : ['inbox-collection'];
 
-   // Set legacy category_id to first collection for backward compatibility
-   db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], bookmarkId);
+   // Use transaction for atomicity
+   db.transaction(() => {
+     db.prepare(`
+      INSERT INTO bookmarks (id, url, title, domain)
+      VALUES (?, ?, ?, ?)
+   `).run(bookmarkId, url, url, domain);
 
-   // Create bookmark-collection links
-   const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-   for (const colId of collectionIds) {
-     // Verify collection exists (skip invalid)
-     const coll = db.prepare("SELECT id FROM collections WHERE id = ?").get(colId);
-     if (coll) {
-       insertLink.run(bookmarkId, colId);
-     }
-   }
+    // Set legacy category_id to first collection for backward compatibility
+    db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0], bookmarkId);
+
+    // Create bookmark-collection links
+    const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+    for (const colId of collectionIds) {
+      // Verify collection exists (skip invalid)
+      const coll = db.prepare("SELECT id FROM collections WHERE id = ?").get(colId);
+      if (coll) {
+        insertLink.run(bookmarkId, colId);
+      }
+    }
+   })();
 
    return { id: bookmarkId, title: url, success: true, needsRefresh: true, collectionIds };
  }
@@ -580,7 +636,7 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
  router.get("/bookmarks/:id", async (req, res) => {
    const { id } = req.params;
    const bookmark = db.prepare(`
-     SELECT b.*, c.name as category_name, c.color as category_color 
+     SELECT b.*, c.name as category_name, c.color as category_color
      FROM bookmarks b
      LEFT JOIN categories c ON b.category_id = c.id
      WHERE b.id = ? AND b.is_deleted = 0
@@ -624,328 +680,372 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
    }
  });
 
-router.post("/bookmarks/bulk", async (req, res) => {
-  const { urls } = req.body;
-  if (!urls || !Array.isArray(urls)) return res.status(400).json({ error: "URLs array is required" });
+ router.post("/bookmarks/bulk", async (req, res) => {
+   const { urls } = req.body;
+   if (!urls || !Array.isArray(urls)) return res.status(400).json({ error: "URLs array is required" });
 
-  const results = [];
-  for (const url of urls) {
-    try {
-      const result = await createBookmark(url);
-      results.push(result);
-    } catch (error: any) {
-      console.error(`Error adding bookmark ${url}:`, error);
-      results.push({ url, error: error.message, success: false });
-    }
-  }
+   const results = [];
+   for (const url of urls) {
+     try {
+       const result = await createBookmark(url);
+       results.push(result);
+     } catch (error: any) {
+       console.error(`Error adding bookmark ${url}:`, error);
+       results.push({ url, error: error.message, success: false });
+     }
+   }
 
-  res.json({ results });
-});
+   res.json({ results });
+ });
 
-router.get("/bookmarks/:id/readability", async (req, res) => {
-  const bookmark = db
-    .prepare("SELECT url FROM bookmarks WHERE id = ?")
-    .get(req.params.id) as any;
+ router.get("/bookmarks/:id/readability", async (req, res) => {
+   const bookmark = db
+     .prepare("SELECT url FROM bookmarks WHERE id = ?")
+     .get(req.params.id) as any;
 
-  if (!bookmark) return res.status(404).json({ error: "Not found" });
+   if (!bookmark) return res.status(404).json({ error: "Not found" });
 
-  try {
-    const config = getConfig();
-    const userAgent = config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
-    const response = await fetch(bookmark.url, {
-      headers: {
-        "User-Agent": userAgent,
-      },
-    });
-    if (!response.ok) {
-      return res.status(response.status).json({ error: `Failed to fetch content: ${response.statusText}` });
-    }
-    const html = await response.text();
-    const dom = new JSDOM(html, { url: bookmark.url });
-    const reader = new Readability(dom.window.document);
-    const article = reader.parse();
+   try {
+     const config = getConfig();
+     const userAgent = config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+     const response = await fetch(bookmark.url, {
+       headers: {
+         "User-Agent": userAgent,
+       },
+     });
+     if (!response.ok) {
+       return res.status(response.status).json({ error: `Failed to fetch content: ${response.statusText}` });
+     }
+     const html = await response.text();
+     const dom = new JSDOM(html, { url: bookmark.url });
+     const reader = new Readability(dom.window.document);
+     const article = reader.parse();
 
-    res.json(article);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+     res.json(article);
+   } catch (error: any) {
+     res.status(500).json({ error: error.message });
+   }
+ });
 
-router.get("/proxy", async (req, res) => {
-  const url = req.query.url as string;
-  if (!url) return res.status(400).send("URL is required");
+ router.get("/proxy", async (req, res) => {
+   const url = req.query.url as string;
+   if (!url) return res.status(400).send("URL is required");
 
-  try {
-    const config = getConfig();
-    // Use Googlebot User-Agent to bypass Cloudflare/WAF challenges on many sites
-    const userAgent = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
-    
-    const headers: Record<string, string> = {
-      "User-Agent": userAgent,
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.5",
-      "X-Forwarded-For": "66.249.66.1", // Googlebot IP range
-    };
-    
-    // Forward cookies from the client
-    if (req.headers.cookie) {
-      headers["Cookie"] = req.headers.cookie;
-    }
+   try {
+     const config = getConfig();
+     // Use Googlebot User-Agent to bypass Cloudflare/WAF challenges on many sites
+     const userAgent = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 
-    const response = await fetch(url, { headers });
+     const headers: Record<string, string> = {
+       "User-Agent": userAgent,
+       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+       "Accept-Language": "en-US,en;q=0.5",
+       "X-Forwarded-For": "66.249.66.1", // Googlebot IP range
+     };
 
-    // Forward Set-Cookie headers back to the client
-    if (typeof response.headers.getSetCookie === 'function') {
-      const cookies = response.headers.getSetCookie();
-      if (cookies && cookies.length > 0) {
-        res.setHeader("Set-Cookie", cookies);
-      }
-    } else {
-      const setCookie = response.headers.get("set-cookie");
-      if (setCookie) {
-        res.setHeader("Set-Cookie", setCookie);
-      }
-    }
+     // Forward cookies from the client
+     if (req.headers.cookie) {
+       headers["Cookie"] = req.headers.cookie;
+     }
 
-    const serverHeader = response.headers.get("server")?.toLowerCase() || "";
-    const isCloudflare = serverHeader.includes("cloudflare");
-    
-    const contentType = response.headers.get("content-type");
-    if (contentType && !contentType.includes("text/html")) {
-      // If it's not HTML, just redirect to the original URL or pipe it
-      return res.redirect(url);
-    }
+     const response = await fetch(url, { headers });
 
-    let html = await response.text();
-    
-    // Inject <base> tag so relative assets load correctly
-    // Use response.url in case there was a redirect
-    const finalUrl = response.url || url;
-    
-    // If it's a Cloudflare challenge, we don't inject the base tag because it breaks the Turnstile iframe origin checks.
-    // Instead, the browser will request /cdn-cgi/ from our domain, and we will proxy it below.
-    if (!isCloudflare || (response.status !== 403 && response.status !== 503)) {
-      const baseTag = `<base href="${finalUrl}">`;
-      if (/<head[^>]*>/i.test(html)) {
-        html = html.replace(/(<head[^>]*>)/i, `$1\n${baseTag}`);
-      } else {
-        html = baseTag + "\n" + html;
-      }
-    }
+     // Forward Set-Cookie headers back to the client
+     if (typeof response.headers.getSetCookie === 'function') {
+       const cookies = response.headers.getSetCookie();
+       if (cookies && cookies.length > 0) {
+         res.setHeader("Set-Cookie", cookies);
+       }
+     } else {
+       const setCookie = response.headers.get("set-cookie");
+       if (setCookie) {
+         res.setHeader("Set-Cookie", setCookie);
+       }
+     }
 
-    res.setHeader("Content-Type", "text/html");
-    // Explicitly do not set X-Frame-Options or CSP
-    res.send(html);
-  } catch (error: any) {
-    res.status(500).send(`Failed to load page: ${error.message}`);
-  }
-});
+     const serverHeader = response.headers.get("server")?.toLowerCase() || "";
+     const isCloudflare = serverHeader.includes("cloudflare");
 
-router.post("/bookmarks/:id/refresh", async (req, res) => {
-  const { id } = req.params;
+     const contentType = response.headers.get("content-type");
+     if (contentType && !contentType.includes("text/html")) {
+       // If it's not HTML, just redirect to the original URL or pipe it
+       return res.redirect(url);
+     }
 
-  try {
-    const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(id) as any;
-    if (!bookmark) {
-      return res.status(404).json({ error: "Bookmark not found" });
-    }
+     let html = await response.text();
 
-    const data = await fetchBookmarkData(bookmark.url);
+     // Inject <base> tag so relative assets load correctly
+     // Use response.url in case there was a redirect
+     const finalUrl = response.url || url;
 
-    // Preserve existing data if scrape fails to find it
-    const finalTitle = data.title || bookmark.title;
-    const finalDescription = data.description || bookmark.description;
-    const finalCoverImageUrl = data.cover_image_url || bookmark.cover_image_url;
-    const finalContentText = data.content_text || bookmark.content_text;
-    const finalDomain = data.domain || bookmark.domain;
-    const finalCategoryId = bookmark.category_id || data.category_id;
-    
-    // For images, if the new scrape found none, keep the old ones
-    let finalImagesJson = data.images_json;
-    if ((!data.images_json || data.images_json === "[]") && bookmark.images_json) {
-      finalImagesJson = bookmark.images_json;
-    }
+     // If it's a Cloudflare challenge, we don't inject the base tag because it breaks the Turnstile iframe origin checks.
+     // Instead, the browser will request /cdn-cgi/ from our domain, and we will proxy it below.
+     if (!isCloudflare || (response.status !== 403 && response.status !== 503)) {
+       const baseTag = `<base href="${finalUrl}">`;
+       if (/<head[^>]*>/i.test(html)) {
+         html = html.replace(/(<head[^>]*>)/i, `$1\n${baseTag}`);
+       } else {
+         html = baseTag + "\n" + html;
+       }
+     }
 
-    const updateBookmark = db.prepare(`
-      UPDATE bookmarks 
-      SET title = ?, description = ?, cover_image_url = ?, content_text = ?, category_id = ?, domain = ?, images_json = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
+     res.setHeader("Content-Type", "text/html");
+     // Explicitly do not set X-Frame-Options or CSP
+     res.send(html);
+   } catch (error: any) {
+     res.status(500).send(`Failed to load page: ${error.message}`);
+   }
+ });
 
-    updateBookmark.run(
-      finalTitle,
-      finalDescription,
-      finalCoverImageUrl,
-      finalContentText,
-      finalCategoryId,
-      finalDomain,
-      finalImagesJson,
-      id
-    );
+ router.post("/bookmarks/:id/refresh", async (req, res) => {
+   const { id } = req.params;
 
-    // Add new suggested tags without deleting existing ones
-    for (const tagName of data.suggestedTags) {
-      let tag = db
-        .prepare("SELECT id FROM tags WHERE name = ?")
-        .get(tagName) as any;
-      let tagId;
+   try {
+     const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(id) as any;
+     if (!bookmark) {
+       return res.status(404).json({ error: "Bookmark not found" });
+     }
 
-      if (!tag) {
-        tagId = uuidv4();
-        try {
-          db.prepare("INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)").run(
-            tagId,
-            tagName
-          );
-          // Fetch again in case it was ignored
-          tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
-          if (tag) tagId = tag.id;
-        } catch (e) {
-          tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
-          if (tag) tagId = tag.id;
-        }
-      } else {
-        tagId = tag.id;
-      }
+     const data = await fetchBookmarkData(bookmark.url);
 
-      db.prepare(
-        "INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)"
-      ).run(id, tagId);
-    }
+     // Preserve existing data if scrape fails to find it
+     const finalTitle = data.title || bookmark.title;
+     const finalDescription = data.description || bookmark.description;
+     const finalCoverImageUrl = data.cover_image_url || bookmark.cover_image_url;
+     const finalContentText = data.content_text || bookmark.content_text;
+     const finalDomain = data.domain || bookmark.domain;
+     const finalCategoryId = bookmark.category_id || data.category_id;
 
-    res.json({ success: true, bookmark: { id, ...data } });
-  } catch (error: any) {
-    console.error("Error refreshing bookmark:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+     // For images, if the new scrape found none, keep the old ones
+     let finalImagesJson = data.images_json;
+     if ((!data.images_json || data.images_json === "[]") && bookmark.images_json) {
+       finalImagesJson = bookmark.images_json;
+     }
 
-router.delete("/bookmarks/:id", (req, res) => {
-  const { id } = req.params;
-  db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
-  db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
-  
-  // Clean up orphaned tags
-  db.prepare(`
-    DELETE FROM tags 
-    WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
-  `).run();
+     const updateBookmark = db.prepare(`
+       UPDATE bookmarks
+       SET title = ?, description = ?, cover_image_url = ?, content_text = ?, category_id = ?, domain = ?, images_json = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+     `);
 
-  res.json({ success: true });
-});
+     updateBookmark.run(
+       finalTitle,
+       finalDescription,
+       finalCoverImageUrl,
+       finalContentText,
+       finalCategoryId,
+       finalDomain,
+       finalImagesJson,
+       id
+     );
 
-router.post("/bookmarks/bulk-delete", (req, res) => {
-  const { ids } = req.body;
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return res.status(400).json({ error: "Invalid or empty ids array" });
-  }
+     // Add new suggested tags without deleting existing ones
+     for (const tagName of data.suggestedTags) {
+       let tag = db
+         .prepare("SELECT id FROM tags WHERE name = ?")
+         .get(tagName) as any;
+       let tagId;
 
-  const placeholders = ids.map(() => '?').join(',');
-  db.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id IN (${placeholders})`).run(...ids);
-  db.prepare(`DELETE FROM bookmarks WHERE id IN (${placeholders})`).run(...ids);
-  
-  // Clean up orphaned tags
-  db.prepare(`
-    DELETE FROM tags 
-    WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
-  `).run();
+       if (!tag) {
+         tagId = uuidv4();
+         try {
+           db.prepare("INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)").run(
+             tagId,
+             tagName
+           );
+           // Fetch again in case it was ignored
+           tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
+           if (tag) tagId = tag.id;
+         } catch (e) {
+           tag = db.prepare("SELECT id FROM tags WHERE name = ?").get(tagName) as any;
+           if (tag) tagId = tag.id;
+         }
+       } else {
+         tagId = tag.id;
+       }
 
-  res.json({ success: true });
-});
+       db.prepare(
+         "INSERT OR IGNORE INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)"
+       ).run(id, tagId);
+     }
 
-router.get("/backup", (req, res) => {
-  try {
-    const categories = db.prepare("SELECT * FROM categories").all();
-    const bookmarks = db.prepare("SELECT * FROM bookmarks").all();
-    const tags = db.prepare("SELECT * FROM tags").all();
-    const bookmark_tags = db.prepare("SELECT * FROM bookmark_tags").all();
+     res.json({ success: true, bookmark: { id, ...data } });
+   } catch (error: any) {
+     console.error("Error refreshing bookmark:", error);
+     res.status(500).json({ error: error.message });
+   }
+ });
 
-    const backup = {
-      version: 1,
-      timestamp: new Date().toISOString(),
-      data: {
-        categories,
-        bookmarks,
-        tags,
-        bookmark_tags,
-      },
-    };
+ router.delete("/bookmarks/:id", (req, res) => {
+   const { id } = req.params;
+   db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
+   db.prepare("DELETE FROM bookmarks WHERE id = ?").run(id);
 
-    res.setHeader("Content-Type", "application/json");
-    res.send(JSON.stringify(backup, (key, value) =>
-      typeof value === 'bigint' ? value.toString() : value
-    ));
-  } catch (error: any) {
-    console.error("Backup failed:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+   // Clean up orphaned tags
+   db.prepare(`
+     DELETE FROM tags
+     WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
+   `).run();
 
-router.post("/restore", (req, res) => {
-  try {
-    const backup = req.body;
-    if (!backup || !backup.data) {
-      return res.status(400).json({ error: "Invalid backup file" });
-    }
+   res.json({ success: true });
+ });
 
-    const { categories, bookmarks, tags, bookmark_tags } = backup.data;
+ router.post("/bookmarks/bulk-delete", (req, res) => {
+   const { ids } = req.body;
+   if (!Array.isArray(ids) || ids.length === 0) {
+     return res.status(400).json({ error: "Invalid or empty ids array" });
+   }
 
-    // Defer foreign key constraints for the upcoming transaction
-    db.pragma("defer_foreign_keys = ON");
+   const placeholders = ids.map(() => '?').join(',');
+   db.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id IN (${placeholders})`).run(...ids);
+   db.prepare(`DELETE FROM bookmarks WHERE id IN (${placeholders})`).run(...ids);
 
-    db.transaction(() => {
-      // Clear existing data
-      db.prepare("DELETE FROM bookmark_tags").run();
-      db.prepare("DELETE FROM tags").run();
-      db.prepare("DELETE FROM bookmarks").run();
-      db.prepare("DELETE FROM categories").run();
+   // Clean up orphaned tags
+   db.prepare(`
+     DELETE FROM tags
+     WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)
+   `).run();
 
-      // Insert new data
-      const insertCategory = db.prepare(
-        "INSERT INTO categories (id, name, icon, color, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-      );
-      for (const c of categories || []) {
-        insertCategory.run(c.id, c.name, c.icon, c.color, c.parent_id, c.created_at);
-      }
+   res.json({ success: true });
+ });
 
-      const insertBookmark = db.prepare(
-        "INSERT INTO bookmarks (id, url, title, description, cover_image_url, content_text, category_id, domain, images_json, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-      );
-      for (const b of bookmarks || []) {
-        insertBookmark.run(
-          b.id,
-          b.url,
-          b.title,
-          b.description,
-          b.cover_image_url,
-          b.content_text,
-          b.category_id,
-          b.domain,
-          b.images_json,
-          b.created_at,
-          b.updated_at,
-          b.is_deleted
-        );
-      }
+ router.get("/backup", (req, res) => {
+   try {
+     const categories = db.prepare("SELECT * FROM categories").all();
+     const bookmarks = db.prepare("SELECT * FROM bookmarks").all();
+     const tags = db.prepare("SELECT * FROM tags").all();
+     const bookmark_tags = db.prepare("SELECT * FROM bookmark_tags").all();
+     const spaces = db.prepare("SELECT * FROM spaces").all();
+     const collections = db.prepare("SELECT * FROM collections").all();
+     const bookmark_collections = db.prepare("SELECT * FROM bookmark_collections").all();
 
-      const insertTag = db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)");
-      for (const t of tags || []) {
-        insertTag.run(t.id, t.name);
-      }
+     const backup = {
+       version: 2,
+       timestamp: new Date().toISOString(),
+       data: {
+         categories,
+         bookmarks,
+         tags,
+         bookmark_tags,
+         spaces,
+         collections,
+         bookmark_collections,
+       },
+     };
 
-      const insertBookmarkTag = db.prepare(
-        "INSERT INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)"
-      );
-      for (const bt of bookmark_tags || []) {
-        insertBookmarkTag.run(bt.bookmark_id, bt.tag_id);
-      }
-    })();
+     res.setHeader("Content-Type", "application/json");
+     res.send(JSON.stringify(backup, (key, value) =>
+       typeof value === 'bigint' ? value.toString() : value
+     ));
+   } catch (error: any) {
+     console.error("Backup failed:", error);
+     res.status(500).json({ error: error.message });
+   }
+ });
 
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error("Restore failed:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+ router.post("/restore", (req, res) => {
+   try {
+     const backup = req.body;
+     if (!backup || !backup.data) {
+       return res.status(400).json({ error: "Invalid backup file" });
+     }
+
+     const { categories, bookmarks, tags, bookmark_tags, spaces, collections, bookmark_collections } = backup.data;
+
+     // Defer foreign key constraints for the upcoming transaction
+     db.pragma("defer_foreign_keys = ON");
+
+     db.transaction(() => {
+       // Clear existing data in correct order
+       db.prepare("DELETE FROM bookmark_collections").run();
+       db.prepare("DELETE FROM bookmark_tags").run();
+       db.prepare("DELETE FROM tags").run();
+       db.prepare("DELETE FROM bookmarks").run();
+       db.prepare("DELETE FROM collections").run();
+       db.prepare("DELETE FROM spaces").run();
+       db.prepare("DELETE FROM categories").run();
+
+       // Insert spaces first (collections depend on them)
+       if (spaces && spaces.length > 0) {
+         const insertSpace = db.prepare("INSERT INTO spaces (id, name, icon, color, created_at) VALUES (?, ?, ?, ?, ?)");
+         for (const s of spaces) {
+           insertSpace.run(s.id, s.name, s.icon, s.color, s.created_at);
+         }
+       }
+
+       // Insert categories
+       if (categories && categories.length > 0) {
+         const insertCategory = db.prepare(
+           "INSERT INTO categories (id, name, icon, color, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+         );
+         for (const c of categories) {
+           insertCategory.run(c.id, c.name, c.icon, c.color, c.parent_id, c.created_at);
+         }
+       }
+
+       // Insert collections (depend on spaces)
+       if (collections && collections.length > 0) {
+         const insertCollection = db.prepare("INSERT INTO collections (id, name, icon, color, space_id, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)");
+         for (const c of collections) {
+           insertCollection.run(c.id, c.name, c.icon, c.color, c.space_id, c.parent_id, c.created_at);
+         }
+       }
+
+       // Insert bookmarks
+       if (bookmarks && bookmarks.length > 0) {
+         const insertBookmark = db.prepare(
+           "INSERT INTO bookmarks (id, url, title, description, cover_image_url, content_text, category_id, domain, images_json, created_at, updated_at, is_deleted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         );
+         for (const b of bookmarks) {
+           insertBookmark.run(
+             b.id,
+             b.url,
+             b.title,
+             b.description,
+             b.cover_image_url,
+             b.content_text,
+             b.category_id,
+             b.domain,
+             b.images_json,
+             b.created_at,
+             b.updated_at,
+             b.is_deleted
+           );
+         }
+       }
+
+       // Insert tags
+       if (tags && tags.length > 0) {
+         const insertTag = db.prepare("INSERT INTO tags (id, name) VALUES (?, ?)");
+         for (const t of tags) {
+           insertTag.run(t.id, t.name);
+         }
+       }
+
+       // Insert bookmark_tags
+       if (bookmark_tags && bookmark_tags.length > 0) {
+         const insertBookmarkTag = db.prepare(
+           "INSERT INTO bookmark_tags (bookmark_id, tag_id) VALUES (?, ?)"
+         );
+         for (const bt of bookmark_tags) {
+           insertBookmarkTag.run(bt.bookmark_id, bt.tag_id);
+         }
+       }
+
+       // Insert bookmark_collections (new v2 field)
+       if (bookmark_collections && bookmark_collections.length > 0) {
+         const insertBookmarkCollection = db.prepare("INSERT INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+         for (const bc of bookmark_collections) {
+           insertBookmarkCollection.run(bc.bookmark_id, bc.collection_id);
+         }
+       }
+     })();
+
+     res.json({ success: true });
+   } catch (error: any) {
+     console.error("Restore failed:", error);
+     res.status(500).json({ error: error.message });
+   }
+ });
 
 export default router;

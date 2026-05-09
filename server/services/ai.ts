@@ -15,9 +15,10 @@ export async function categorizeWithAI(
   let suggestedTags: string[] = [];
 
   const config = getConfig();
-  const provider = config.llmProvider || "gemini";
-  const apiKey = config.llmApiKey || process.env.GEMINI_API_KEY;
-  const model = config.llmModel || "gemini-3-flash-preview";
+  const llm = config.llm || {};
+  const provider = llm.provider || "gemini";
+  const apiKey = llm.apiKey || process.env.GEMINI_API_KEY;
+  const model = llm.model || "gemini-3-flash-preview";
   const endpoint = config.llmEndpoint || "";
 
   if (!apiKey && provider !== "custom") {

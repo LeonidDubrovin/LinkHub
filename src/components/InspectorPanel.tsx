@@ -3,6 +3,7 @@ import { BookOpen, Globe, Shield, X, RefreshCw, Trash2, ExternalLink } from "luc
 import { format } from "date-fns";
 import { cn } from "../lib/utils";
 import { getDomain } from "../utils";
+import { FaviconImg } from "./FaviconImg";
 import { Bookmark, Collection } from "../types";
 
 interface ReaderContent {
@@ -290,7 +291,7 @@ export function InspectorPanel({
                 rel="noreferrer"
                 className="text-sm text-blue-600 hover:underline break-all flex items-center gap-1"
               >
-                <img src={`https://www.google.com/s2/favicons?domain=${getDomain(selectedBookmark.url)}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
+                <FaviconImg domain={getDomain(selectedBookmark.url)} />
                 {selectedBookmark.url} <ExternalLink size={12} />
               </a>
             </div>

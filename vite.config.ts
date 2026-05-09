@@ -18,15 +18,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5277,
-      hmr: {
-        port: 5277,
-      },
       watch: {
         usePolling: false,
       },
-      // Note: /api and /cdn-cgi routes are handled directly by Express middleware
-      // in server.ts, so no proxy is needed here.
     },
     build: {
       outDir: 'dist',

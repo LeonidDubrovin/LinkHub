@@ -9,7 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const app = express();
-const PORT = 3070;
+const PORT = 8400;
+const PORT_POOL = Array.from({ length: 100 }, (_, i) => PORT + i);
 const PORT_FILE = path.join(process.cwd(), ".server-port");
 
 app.use(express.json({ limit: "50mb" }));
@@ -151,45 +152,64 @@ export async function startServer(isElectron = false): Promise<number> {
   }
 
   return new Promise<number>((resolve, reject) => {
-    // Try preferred port first; if unavailable, fall back to a random port
-    const targetPort = isElectron ? 0 : PORT;
+    if (isElectron) {
+      const server = app.listen(0, "127.0.0.1", () => {
+        const actualPort = (server.address() as any).port;
+        console.log(`Server running on http://127.0.0.1:${actualPort}`);
+        writePortFile(actualPort);
+        resolve(actualPort);
+      });
+      server.on('error', (e: any) => reject(e));
+      return;
+    }
 
-    const server = app.listen(targetPort, "127.0.0.1", () => {
-      const actualPort = (server.address() as any).port;
-      console.log(`Server running on http://127.0.0.1:${actualPort}`);
-      // Write port to file so Electron can discover it in dev mode
-      try {
-        fs.writeFileSync(PORT_FILE, String(actualPort), "utf-8");
-      } catch (e) {
-        console.warn("Failed to write port file:", e);
-      }
-      resolve(actualPort);
-    });
-
-    server.on('error', (e: any) => {
-      if (e.code === 'EADDRINUSE' && !isElectron) {
-        console.log(`Port ${PORT} is already in use. Assuming server is already running.`);
-        resolve(PORT);
-      } else if (e.code === 'EACCES' && !isElectron && targetPort === PORT) {
-        // Port requires elevated privileges — fall back to a random port
-        console.warn(`Port ${PORT} is not accessible (${e.message}). Falling back to a random port.`);
+    const tryPort = (index: number) => {
+      if (index >= PORT_POOL.length) {
+        console.warn(`All ports in pool ${PORT_POOL.join(',')} are busy. Falling back to a random port.`);
         const fallbackServer = app.listen(0, "127.0.0.1", () => {
           const actualPort = (fallbackServer.address() as any).port;
-          console.log(`Server running on http://127.0.0.1:${actualPort} (fallback)`);
-          try {
-            fs.writeFileSync(PORT_FILE, String(actualPort), "utf-8");
-          } catch (e2) {
-            console.warn("Failed to write port file:", e2);
-          }
+          console.log(`Server running on http://127.0.0.1:${actualPort} (random)`);
+          writePortFile(actualPort);
           resolve(actualPort);
         });
         fallbackServer.on('error', (e2: any) => reject(e2));
-      } else {
-        console.error('Server error:', e);
-        reject(e);
+        return;
       }
-    });
+
+      const port = PORT_POOL[index];
+      const server = app.listen(port, "127.0.0.1", () => {
+        const actualPort = (server.address() as any).port;
+        console.log(`Server running on http://127.0.0.1:${actualPort}`);
+        writePortFile(actualPort);
+        resolve(actualPort);
+      });
+
+      server.on('error', (e: any) => {
+        if (e.code === 'EADDRINUSE' || e.code === 'EACCES') {
+          console.warn(`Port ${port} unavailable (${e.code}). Trying next...`);
+          tryPort(index + 1);
+        } else {
+          console.error('Server error:', e);
+          reject(e);
+        }
+      });
+    };
+
+    const envPort = parseInt(process.env.PORT || '', 10);
+    if (envPort > 0) {
+      PORT_POOL.unshift(envPort);
+    }
+
+    tryPort(0);
   });
+}
+
+function writePortFile(port: number) {
+  try {
+    fs.writeFileSync(PORT_FILE, String(port), "utf-8");
+  } catch (e) {
+    console.warn("Failed to write port file:", e);
+  }
 }
 
 // Only start automatically if not imported by Electron

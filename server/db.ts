@@ -141,10 +141,6 @@ db.exec(`
   }
 } catch (e) {}
 
-try {
-  db.exec("ALTER TABLE bookmarks ADD COLUMN images_json TEXT");
-} catch (e) { /* ignore if exists */ }
-
 // Insert default categories if empty
 const catCount = db
   .prepare("SELECT COUNT(*) as count FROM categories")

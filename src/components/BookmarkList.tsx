@@ -235,7 +235,7 @@ export function BookmarkList({
           >
             {filteredBookmarks.map((bookmark) => {
               const domain = getDomain(bookmark.url);
-              const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+              const faviconUrl = `/api/favicons/${domain}`;
               
               return (
               <div

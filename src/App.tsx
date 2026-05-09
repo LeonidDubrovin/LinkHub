@@ -5,6 +5,7 @@ import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddBookmarkModal } from "./components/AddBookmarkModal";
 import { SettingsModal } from "./components/SettingsModal";
+import { FaviconImg } from "./components/FaviconImg";
 import { Bookmark, Space, Collection, Tag, Domain } from "./types";
 import { format } from "date-fns";
 import {
@@ -1152,7 +1153,7 @@ export default function App() {
                        : "hover:bg-slate-200 text-slate-700",
                    )}
                  >
-                  <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
+                  <FaviconImg domain={d.domain} />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
                   <span className="text-xs text-slate-400 font-medium group-hover:hidden">{d.count}</span>
                   <div 
@@ -1187,7 +1188,7 @@ export default function App() {
                        : "hover:bg-slate-200 text-slate-700",
                    )}
                  >
-                  <img src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
+                  <FaviconImg domain={d.domain} />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
                   <span className="text-xs text-slate-400 font-medium group-hover:hidden">{d.count}</span>
                   <div 
@@ -1395,7 +1396,7 @@ export default function App() {
             >
               {filteredBookmarks.map((bookmark) => {
                 const domain = getDomain(bookmark.url);
-                const faviconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                const faviconUrl = `/api/favicons/${domain}`;
                 
                 return (
                 <div
@@ -1757,7 +1758,7 @@ export default function App() {
                     rel="noreferrer"
                     className="text-sm text-blue-600 hover:underline break-all flex items-center gap-1"
                   >
-                    <img src={`https://www.google.com/s2/favicons?domain=${getDomain(selectedBookmark.url)}&sz=32`} alt="" className="w-4 h-4 rounded-sm" referrerPolicy="no-referrer" />
+                    <FaviconImg domain={getDomain(selectedBookmark.url)} />
                     {selectedBookmark.url} <ExternalLink size={12} />
                   </a>
                 </div>

@@ -4,6 +4,87 @@ import { JSDOM } from "jsdom";
 import * as tldts from "tldts";
 import { categorizeWithAI } from "./ai.ts";
 import { getConfig } from "../config.ts";
+import { getDataDir } from "../db.ts";
+import fs from "fs";
+import path from "path";
+
+const faviconsDir = () => path.join(getDataDir() || path.join(process.cwd(), "data"), "favicons");
+
+function ensureFaviconsDir() {
+  const dir = faviconsDir();
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+export function getFaviconPath(domain: string): string {
+  return path.join(ensureFaviconsDir(), `${domain}.png`);
+}
+
+export async function downloadAndCacheFavicon(domain: string, htmlUrl?: string): Promise<boolean> {
+  const filePath = getFaviconPath(domain);
+  if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) return true;
+
+  ensureFaviconsDir();
+  const candidates: string[] = [];
+
+  if (htmlUrl) {
+    try {
+      const config = getConfig();
+      const ua = config.userAgent || "Mozilla/5.0 (compatible; Twitterbot/1.0)";
+      const resp = await fetch(htmlUrl, {
+        headers: { "User-Agent": ua, "Accept": "text/html" },
+        signal: AbortSignal.timeout(8000),
+      });
+      const html = await resp.text();
+      const $ = cheerio.load(html);
+
+      const pick = (sel: string, attr = "href") => {
+        $(sel).each((_, el) => {
+          const v = $(el).attr(attr);
+          if (v) try { candidates.push(new URL(v, htmlUrl).href); } catch {}
+        });
+      };
+
+      pick('link[rel="icon"]');
+      pick('link[rel="shortcut icon"]');
+      pick('link[rel="apple-touch-icon"]');
+      pick('link[rel="apple-touch-icon-precomposed"]');
+      pick('link[rel="mask-icon"]');
+      pick('link[type="image/svg+xml"]');
+
+      const sizes = (s: string) => {
+        const m = s.match(/(\d+)/);
+        return m ? parseInt(m[1]) : 0;
+      };
+      candidates.sort((a, b) => {
+        const sa = sizes($(a).attr("sizes") || "");
+        const sb = sizes($(b).attr("sizes") || "");
+        return sb - sa;
+      });
+    } catch {}
+  }
+
+  try { candidates.push(new URL("/favicon.ico", `https://${domain}`).href); } catch {}
+
+  for (const url of candidates) {
+    try {
+      const r = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(5000),
+        redirect: "follow",
+      });
+      if (!r.ok) continue;
+      const ct = r.headers.get("content-type") || "";
+      if (!ct.startsWith("image/") && !ct.includes("icon") && !ct.includes("octet-stream")) continue;
+      const buf = Buffer.from(await r.arrayBuffer());
+      if (buf.length < 32 || buf.length > 500000) continue;
+      fs.writeFileSync(filePath, buf);
+      return true;
+    } catch {}
+  }
+
+  return false;
+}
 
 export async function fetchBookmarkData(url: string) {
   // 1. Fetch HTML
@@ -166,6 +247,10 @@ export async function fetchBookmarkData(url: string) {
     const parsed = tldts.parse(url);
     domain = parsed.domain || new URL(url).hostname;
   } catch (e) {}
+
+  if (domain) {
+    downloadAndCacheFavicon(domain, url).catch(() => {});
+  }
 
   // 4. Smart Categorization with Gemini
   const { category_id, suggestedTags } = await categorizeWithAI(

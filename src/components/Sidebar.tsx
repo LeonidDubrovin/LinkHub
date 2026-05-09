@@ -1,6 +1,7 @@
 import React from "react";
 import { cn } from "../lib/utils";
 import { Icon } from "./Icon";
+import { FaviconImg } from "./FaviconImg";
 import { Globe, Settings, Plus, Pin, PinOff, BookOpen } from "lucide-react";
 import { SpaceWithCollections, Domain, Tag, Collection } from "../types";
 
@@ -173,12 +174,7 @@ export function Sidebar({
                       : "hover:bg-slate-200 text-slate-700",
                   )}
                 >
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`}
-                    alt=""
-                    className="w-4 h-4 rounded-sm"
-                    referrerPolicy="no-referrer"
-                  />
+                  <FaviconImg domain={d.domain} />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
                   <span className="text-xs text-slate-400 font-medium group-hover:hidden">
                     {d.count}
@@ -217,12 +213,7 @@ export function Sidebar({
                       : "hover:bg-slate-200 text-slate-700",
                   )}
                 >
-                  <img
-                    src={`https://www.google.com/s2/favicons?domain=${d.domain}&sz=32`}
-                    alt=""
-                    className="w-4 h-4 rounded-sm"
-                    referrerPolicy="no-referrer"
-                  />
+                  <FaviconImg domain={d.domain} />
                   <span className="truncate flex-1 text-left">{d.domain}</span>
                   <span className="text-xs text-slate-400 font-medium group-hover:hidden">
                     {d.count}
