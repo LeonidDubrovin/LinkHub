@@ -10,11 +10,11 @@ async function createWindow() {
   if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR) {
     process.env.PORTABLE_EXECUTABLE_DIR = path.dirname(app.getPath("exe"));
   }
-  
+
   const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
   const configPath = path.join(exeDir, "linkhub.config.json");
   let customDataDir = null;
-  
+
   if (fs.existsSync(configPath)) {
     try {
       const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -56,54 +56,72 @@ async function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.setMenu(null);
 
-   if (app.isPackaged && !serverStarted) {
-     try {
-       const { startServer } = await require("../dist-electron/server.js");
-       serverPort = await startServer(true);
-       serverStarted = true;
-     } catch (e) {
-       console.error("Failed to start server:", e);
-       mainWindow.loadURL(`data:text/html;charset=utf-8,
-         <html>
-           <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
-             <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
-             <p>The internal server encountered an error and could not start.</p>
-             <p>Error details: ${e.message || String(e)}</p>
-             <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
-           </body>
-         </html>
-       `);
-       return;
+  // Start the Express server only once, and ONLY in production
+  // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
+  if (app.isPackaged && !serverStarted) {
+    try {
+      const { startServer } = await require("./server.js");
+      serverPort = await startServer(true);
+      serverStarted = true;
+    } catch (e) {
+      console.error("Failed to start server:", e);
+      mainWindow.loadURL(`data:text/html;charset=utf-8,
+        <html>
+          <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
+            <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
+            <p>The internal server encountered an error and could not start.</p>
+            <p>Error details: ${e.message || String(e)}</p>
+            <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
+          </body>
+        </html>
+      `);
+      return;
+    }
+  } else if (!app.isPackaged && !serverStarted) {
+    serverPort = 3070;
+    serverStarted = true;
+  }
+
+  const appUrl = `http://127.0.0.1:${serverPort}`;
+  console.log("Loading app from:", appUrl);
+  mainWindow.loadURL(appUrl);
+
+  mainWindow.webContents.openDevTools();
+
+  mainWindow.webContents.on('did-start-loading', () => {
+    console.log("Page started loading");
+  });
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log("Page finished loading");
+  });
+
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console] Level ${level}: ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.on('context-menu', (e, props) => {
+    const menu = Menu.buildFromTemplate([
+     {
+       label: 'Inspect Element',
+       click: () => {
+         mainWindow?.webContents.inspectElement(props.x, props.y);
+       }
+     },
+     {
+       label: 'Toggle Developer Tools',
+       click: () => {
+         mainWindow?.webContents.toggleDevTools();
+       }
+     },
+     {
+       label: 'Reload',
+       click: () => {
+         mainWindow?.webContents.reload();
+       }
      }
-   } else if (!app.isPackaged && !serverStarted) {
-     serverPort = 3070;
-     serverStarted = true;
-   }
-
-   mainWindow.loadURL(`http://127.0.0.1:${serverPort}`);
-
-   mainWindow.webContents.on('context-menu', (e, props) => {
-     const menu = Menu.buildFromTemplate([
-      {
-        label: 'Inspect Element',
-        click: () => {
-          mainWindow?.webContents.inspectElement(props.x, props.y);
-        }
-      },
-      {
-        label: 'Toggle Developer Tools',
-        click: () => {
-          mainWindow?.webContents.toggleDevTools();
-        }
-      },
-      {
-        label: 'Reload',
-        click: () => {
-          mainWindow?.webContents.reload();
-        }
-      }
-    ]);
-    menu.popup();
+   ]);
+   menu.popup();
   });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -132,19 +150,24 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Single instance lock - focus existing window if another instance is launched
+  const gotLock = app.requestSingleInstanceLock();
+
+  if (!gotLock) {
+    app.quit();
+    return;
+  }
+
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
   createWindow();
-
-  globalShortcut.register('CommandOrControl+Shift+I', () => {
-    if (mainWindow) {
-      mainWindow.webContents.toggleDevTools();
-    }
-  });
-
-  globalShortcut.register('F12', () => {
-    if (mainWindow) {
-      mainWindow.webContents.toggleDevTools();
-    }
-  });
+  globalShortcut.register('CommandOrControl+Shift+I', () => mainWindow?.webContents.toggleDevTools());
+  globalShortcut.register('F12', () => mainWindow?.webContents.toggleDevTools());
 });
 
 app.on("will-quit", () => {
@@ -152,13 +175,9 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  if (process.platform !== "darwin") app.quit();
 });
 
 app.on("activate", () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
+  if (mainWindow === null) createWindow();
 });

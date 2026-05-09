@@ -5,7 +5,7 @@ import {defineConfig, loadEnv} from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
-  
+
   return {
     plugins: [react(), tailwindcss()],
     define: {
@@ -25,16 +25,8 @@ export default defineConfig(({ mode }) => {
       watch: {
         usePolling: false,
       },
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:3070',
-          changeOrigin: true,
-        },
-        '/cdn-cgi': {
-          target: 'http://127.0.0.1:3070',
-          changeOrigin: true,
-        }
-      }
+      // Note: /api and /cdn-cgi routes are handled directly by Express middleware
+      // in server.ts, so no proxy is needed here.
     },
     build: {
       outDir: 'dist',

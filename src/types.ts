@@ -7,6 +7,10 @@ export interface Space {
   collectionCount?: number;
 }
 
+export interface SpaceWithCollections extends Space {
+  collections?: Collection[];
+}
+
 export interface Collection {
   id: string;
   name: string;

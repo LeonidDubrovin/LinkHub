@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import apiRoutes from "./server/routes/api.js";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -9,6 +10,7 @@ const __dirname = path.dirname(__filename);
 
 export const app = express();
 const PORT = 3070;
+const PORT_FILE = path.join(process.cwd(), ".server-port");
 
 app.use(express.json({ limit: "50mb" }));
 
@@ -18,7 +20,7 @@ app.all("/cdn-cgi/*", async (req, res) => {
     // Try to determine the target domain from the Referer header
     const referer = req.headers.referer;
     let targetOrigin = "";
-    
+
     if (referer) {
       try {
         const refererUrl = new URL(referer);
@@ -32,20 +34,20 @@ app.all("/cdn-cgi/*", async (req, res) => {
         }
       } catch (e) {}
     }
-    
+
     if (!targetOrigin) {
       return res.status(400).send("Could not determine target origin for Cloudflare proxy");
     }
 
     const targetUrl = `${targetOrigin}${req.originalUrl}`;
-    
+
     const headers: Record<string, string> = {
       "User-Agent": req.headers["user-agent"] || "Mozilla/5.0",
       "Accept": req.headers["accept"] || "*/*",
       "Accept-Language": req.headers["accept-language"] || "en-US,en;q=0.5",
       "Content-Type": req.headers["content-type"] || "",
     };
-    
+
     if (req.headers.cookie) {
       headers["Cookie"] = req.headers.cookie;
     }
@@ -56,8 +58,8 @@ app.all("/cdn-cgi/*", async (req, res) => {
       headers,
       // Only forward body if it exists and is not a GET/HEAD request
       // Note: express.json() might have parsed the body, so we need to stringify it if it's an object
-      body: req.method !== "GET" && req.method !== "HEAD" ? 
-        (typeof req.body === 'object' && Object.keys(req.body).length > 0 ? JSON.stringify(req.body) : req.body) 
+      body: req.method !== "GET" && req.method !== "HEAD" ?
+        (typeof req.body === 'object' && Object.keys(req.body).length > 0 ? JSON.stringify(req.body) : req.body)
         : undefined,
     });
 
@@ -68,7 +70,7 @@ app.all("/cdn-cgi/*", async (req, res) => {
         res.setHeader(key, value);
       }
     });
-    
+
     // Forward Set-Cookie properly
     if (typeof response.headers.getSetCookie === 'function') {
       const cookies = response.headers.getSetCookie();
@@ -83,7 +85,7 @@ app.all("/cdn-cgi/*", async (req, res) => {
     }
 
     res.status(response.status);
-    
+
     // Pipe the response body
     if (response.body) {
       // Convert Web ReadableStream to Node Readable stream
@@ -108,7 +110,7 @@ app.all("/cdn-cgi/*", async (req, res) => {
   }
 });
 
-// API Routes
+// API Routes - mounted BEFORE Vite middleware in dev mode so Express handles them directly
 app.use("/api", apiRoutes);
 
 export async function startServer(isElectron = false): Promise<number> {
@@ -118,6 +120,8 @@ export async function startServer(isElectron = false): Promise<number> {
       server: { middlewareMode: true },
       appType: "spa",
     });
+    // Vite middleware handles non-API requests (SPA serving, HMR, etc.)
+    // API routes are already handled above by Express
     app.use(vite.middlewares);
 
     app.use("*", async (req, res, next) => {
@@ -134,12 +138,12 @@ export async function startServer(isElectron = false): Promise<number> {
   } else {
     // In production or Electron, serve static files from dist
     // Resolve dist path depending on whether we are running bundled in dist-electron or directly
-    const distPath = __dirname.endsWith("dist-electron") 
-      ? path.join(__dirname, "../dist") 
+    const distPath = __dirname.endsWith("dist-electron")
+      ? path.join(__dirname, "../dist")
       : path.join(__dirname, "dist");
-      
+
     app.use(express.static(distPath));
-    
+
     // Fallback for SPA routing
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
@@ -147,14 +151,18 @@ export async function startServer(isElectron = false): Promise<number> {
   }
 
   return new Promise<number>((resolve, reject) => {
-    // In production/Electron, use port 0 to get a random free port if 3070 is taken,
-    // or just try 3070 first and fallback. For simplicity, if isElectron is true, we can just use 0.
-    // Wait, if we use 0, it will always be random. Let's try PORT first.
+    // Try preferred port first; if unavailable, fall back to a random port
     const targetPort = isElectron ? 0 : PORT;
-    
-    const server = app.listen(targetPort, "0.0.0.0", () => {
+
+    const server = app.listen(targetPort, "127.0.0.1", () => {
       const actualPort = (server.address() as any).port;
-      console.log(`Server running on http://localhost:${actualPort}`);
+      console.log(`Server running on http://127.0.0.1:${actualPort}`);
+      // Write port to file so Electron can discover it in dev mode
+      try {
+        fs.writeFileSync(PORT_FILE, String(actualPort), "utf-8");
+      } catch (e) {
+        console.warn("Failed to write port file:", e);
+      }
       resolve(actualPort);
     });
 
@@ -162,6 +170,20 @@ export async function startServer(isElectron = false): Promise<number> {
       if (e.code === 'EADDRINUSE' && !isElectron) {
         console.log(`Port ${PORT} is already in use. Assuming server is already running.`);
         resolve(PORT);
+      } else if (e.code === 'EACCES' && !isElectron && targetPort === PORT) {
+        // Port requires elevated privileges — fall back to a random port
+        console.warn(`Port ${PORT} is not accessible (${e.message}). Falling back to a random port.`);
+        const fallbackServer = app.listen(0, "127.0.0.1", () => {
+          const actualPort = (fallbackServer.address() as any).port;
+          console.log(`Server running on http://127.0.0.1:${actualPort} (fallback)`);
+          try {
+            fs.writeFileSync(PORT_FILE, String(actualPort), "utf-8");
+          } catch (e2) {
+            console.warn("Failed to write port file:", e2);
+          }
+          resolve(actualPort);
+        });
+        fallbackServer.on('error', (e2: any) => reject(e2));
       } else {
         console.error('Server error:', e);
         reject(e);

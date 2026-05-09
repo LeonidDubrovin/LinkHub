@@ -12,6 +12,7 @@ coverage/
 server-loaded.txt
 data/
 linkhub.config.json
+.server-port
 
 # Игнорируем всё в .github кроме workflows (workflows нужно версировать)
 .github/*

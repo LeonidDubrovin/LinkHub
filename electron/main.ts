@@ -11,11 +11,11 @@ async function createWindow() {
   if (app.isPackaged && !process.env.PORTABLE_EXECUTABLE_DIR) {
     process.env.PORTABLE_EXECUTABLE_DIR = path.dirname(app.getPath("exe"));
   }
-  
+
   const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
   const configPath = path.join(exeDir, "linkhub.config.json");
   let customDataDir = null;
-  
+
   if (fs.existsSync(configPath)) {
     try {
       const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
@@ -64,77 +64,87 @@ async function createWindow() {
    // Start the Express server only once, and ONLY in production
    // In development, npm run dev starts the server in Node.js to avoid native module ABI mismatches
    if (app.isPackaged && !serverStarted) {
-     try {
-       // @ts-ignore - server.js is generated in the same directory by tsup
-       const { startServer } = await import("./server.js");
-       serverPort = await startServer(true);
-       serverStarted = true;
-     } catch (e: any) {
-       console.error("Failed to start server:", e);
-       mainWindow.loadURL(`data:text/html;charset=utf-8,
-         <html>
-           <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
-             <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
-             <p>The internal server encountered an error and could not start.</p>
-             <p>Error details: ${e.message || String(e)}</p>
-             <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
-           </body>
-         </html>
-       `);
-       return; // Stop execution, don't try to load the web app
+    try {
+      // @ts-ignore - server.js is generated in the same directory by tsup
+      const { startServer } = await import("./server.js");
+      serverPort = await startServer(true);
+      serverStarted = true;
+    } catch (e: any) {
+      console.error("Failed to start server:", e);
+      mainWindow.loadURL(`data:text/html;charset=utf-8,
+        <html>
+          <body style="font-family: sans-serif; padding: 2rem; text-align: center; background: #f8f9fa; color: #333;">
+            <h1 style="color: #e11d48;">Fatal Error: Server Failed to Start</h1>
+            <p>The internal server encountered an error and could not start.</p>
+            <p>Error details: ${e.message || String(e)}</p>
+            <p>Press <b>F12</b> to open Developer Tools and check the console.</p>
+          </body>
+        </html>
+      `);
+      return; // Stop execution, don't try to load the web app
+    }
+  } else if (!app.isPackaged && !serverStarted) {
+    // In development, npm run dev starts the server.
+    // Read the actual port from the port file written by the server.
+    const portFile = path.join(process.cwd(), ".server-port");
+    try {
+      const portStr = fs.readFileSync(portFile, "utf-8").trim();
+      serverPort = parseInt(portStr, 10);
+      console.log("Dev server port from file:", serverPort);
+    } catch {
+      // Fall back to default port if file doesn't exist yet
+      serverPort = 3070;
+      console.log("Port file not found, falling back to default port 3070");
+    }
+    serverStarted = true;
+  }
+
+  // Load the web app
+  const appUrl = `http://127.0.0.1:${serverPort}`;
+  console.log("Loading app from:", appUrl);
+  mainWindow.loadURL(appUrl);
+
+  // Force open DevTools for debugging white screen issues
+  mainWindow.webContents.openDevTools();
+
+  // Log when page starts loading
+  mainWindow.webContents.on('did-start-loading', () => {
+    console.log("Page started loading");
+  });
+
+  // Log when page finishes loading
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log("Page finished loading");
+  });
+
+  // Log any console messages from the renderer
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer Console] Level ${level}: ${message} (${sourceId}:${line})`);
+  });
+
+  // Add a context menu to easily open DevTools
+  mainWindow.webContents.on('context-menu', (e, props) => {
+    const menu = Menu.buildFromTemplate([
+     {
+       label: 'Inspect Element',
+       click: () => {
+         mainWindow?.webContents.inspectElement(props.x, props.y);
+       }
+     },
+     {
+       label: 'Toggle Developer Tools',
+       click: () => {
+         mainWindow?.webContents.toggleDevTools();
+       }
+     },
+     {
+       label: 'Reload',
+       click: () => {
+         mainWindow?.webContents.reload();
+       }
      }
-   } else if (!app.isPackaged && !serverStarted) {
-     // In development, assume npm run dev is already running on port 3070
-     serverPort = 3070;
-     serverStarted = true;
-   }
-
-   // Load the web app
-   const appUrl = `http://127.0.0.1:${serverPort}`;
-   console.log("Loading app from:", appUrl);
-   mainWindow.loadURL(appUrl);
-
-   // Force open DevTools for debugging white screen issues
-   mainWindow.webContents.openDevTools();
-
-   // Log when page starts loading
-   mainWindow.webContents.on('did-start-loading', () => {
-     console.log("Page started loading");
-   });
-
-   // Log when page finishes loading
-   mainWindow.webContents.on('did-finish-load', () => {
-     console.log("Page finished loading");
-   });
-
-   // Log any console messages from the renderer
-   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-     console.log(`[Renderer Console] Level ${level}: ${message} (${sourceId}:${line})`);
-   });
-
-   // Add a context menu to easily open DevTools
-   mainWindow.webContents.on('context-menu', (e, props) => {
-     const menu = Menu.buildFromTemplate([
-      {
-        label: 'Inspect Element',
-        click: () => {
-          mainWindow?.webContents.inspectElement(props.x, props.y);
-        }
-      },
-      {
-        label: 'Toggle Developer Tools',
-        click: () => {
-          mainWindow?.webContents.toggleDevTools();
-        }
-      },
-      {
-        label: 'Reload',
-        click: () => {
-          mainWindow?.webContents.reload();
-        }
-      }
-    ]);
-    menu.popup();
+   ]);
+   menu.popup();
   });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
@@ -163,6 +173,21 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Single instance lock - focus existing window if another instance is launched
+  const gotLock = app.requestSingleInstanceLock();
+
+  if (!gotLock) {
+    app.quit();
+    return;
+  }
+
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+
   createWindow();
   globalShortcut.register('CommandOrControl+Shift+I', () => mainWindow?.webContents.toggleDevTools());
   globalShortcut.register('F12', () => mainWindow?.webContents.toggleDevTools());
