@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo, useRef } from "react";
 import { Collection, SpaceWithCollections } from "../types";
 import { apiClient, ApiError } from "../services/api";
 import { buildCollectionTree } from "../utils/buildCollectionTree";
+import { DropPosition } from "../components/CollectionTree";
 
 type ToastFn = (toast: { message: string; type: "success" | "error" | "info" } | null) => void;
 
@@ -15,6 +16,7 @@ export function useCollections(
   const [draggedCollectionId, setDraggedCollectionId] = useState<string | null>(null);
   const draggedCollectionIdRef = useRef<string | null>(null);
   const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<DropPosition | null>(null);
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; position: { x: number; y: number } } | null>(null);
   const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null);
   const [iconPickerCollection, setIconPickerCollection] = useState<Collection | null>(null);
@@ -115,27 +117,77 @@ export function useCollections(
   );
 
   const handleMoveCollection = useCallback(
-    async (draggedId: string, targetId: string) => {
-      if (draggedId === "inbox-collection" || targetId === "inbox-collection") {
+    async (draggedId: string, targetId: string | null, position: DropPosition) => {
+      if (draggedId === "inbox-collection") {
         setToast({ message: "Cannot move system collections", type: "error" });
         return;
       }
-      if (isDescendant(draggedId, targetId)) {
+
+      if (targetId && isDescendant(draggedId, targetId)) {
         setToast({ message: "Cannot move collection into its own descendant", type: "error" });
         return;
       }
+
       const draggedColl = collections.find((c) => c.id === draggedId);
       if (!draggedColl) { setToast({ message: "Collection not found", type: "error" }); return; }
-      const targetChildren = collections.filter((c) => c.parent_id === targetId);
-      const maxSortOrder = targetChildren.reduce((max, c) => Math.max(max, c.sort_order ?? 0), -1);
+
       try {
-        await apiClient.collections.update(draggedId, {
-          name: draggedColl.name,
-          icon: draggedColl.icon,
-          color: draggedColl.color,
-          parent_id: targetId,
-          sort_order: maxSortOrder + 1,
-        });
+        if (!targetId) {
+          const rootSiblings = collections.filter(
+            (c) => c.space_id === draggedColl.space_id && !c.parent_id
+          );
+          const maxSort = rootSiblings.reduce((max, c) => Math.max(max, c.sort_order ?? 0), 0);
+          await apiClient.collections.update(draggedId, {
+            name: draggedColl.name,
+            icon: draggedColl.icon,
+            color: draggedColl.color,
+            parent_id: null,
+            sort_order: maxSort + 1,
+          });
+        } else if (position === "into") {
+          const targetChildren = collections.filter((c) => c.parent_id === targetId);
+          const maxSort = targetChildren.reduce((max, c) => Math.max(max, c.sort_order ?? 0), -1);
+          await apiClient.collections.update(draggedId, {
+            name: draggedColl.name,
+            icon: draggedColl.icon,
+            color: draggedColl.color,
+            parent_id: targetId,
+            sort_order: maxSort + 1,
+          });
+        } else {
+          const target = collections.find((c) => c.id === targetId);
+          if (!target) { setToast({ message: "Target not found", type: "error" }); return; }
+
+          const siblings = collections
+            .filter((c) => c.space_id === target.space_id && c.parent_id === target.parent_id && c.id !== draggedId)
+            .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+          const targetIndex = siblings.findIndex((c) => c.id === targetId);
+          let newSortOrder: number;
+
+          if (position === "before") {
+            if (targetIndex <= 0) {
+              newSortOrder = (siblings[0]?.sort_order ?? 0) - 1;
+            } else {
+              newSortOrder = ((siblings[targetIndex - 1].sort_order ?? 0) + (target.sort_order ?? 0)) / 2;
+            }
+          } else {
+            if (targetIndex >= siblings.length - 1) {
+              newSortOrder = (target.sort_order ?? 0) + 1;
+            } else {
+              newSortOrder = ((target.sort_order ?? 0) + (siblings[targetIndex + 1].sort_order ?? 0)) / 2;
+            }
+          }
+
+          await apiClient.collections.update(draggedId, {
+            name: draggedColl.name,
+            icon: draggedColl.icon,
+            color: draggedColl.color,
+            parent_id: target.parent_id,
+            sort_order: newSortOrder,
+          });
+        }
+
         await fetchCollections();
         setToast({ message: "Collection moved", type: "success" });
       } catch (error) {
@@ -145,6 +197,7 @@ export function useCollections(
         draggedCollectionIdRef.current = null;
         setDraggedCollectionId(null);
         setDropTargetCollectionId(null);
+        setDropPosition(null);
       }
     },
     [collections, fetchCollections, isDescendant, setToast]
@@ -234,29 +287,51 @@ export function useCollections(
         draggedCollectionIdRef.current = collId;
         setDraggedCollectionId(collId);
         e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", collId);
       },
-      onDragOver: (e: React.DragEvent, collId: string) => {
+      onDragOver: (e: React.DragEvent, collId: string, position: DropPosition) => {
         e.preventDefault();
+        e.stopPropagation();
         const draggedId = draggedCollectionIdRef.current;
-        if (draggedId && collId !== draggedId && !isDescendant(draggedId, collId)) {
-          setDropTargetCollectionId(collId);
-        }
+        if (!draggedId || draggedId === collId) return;
+        if (position === "into" && isDescendant(draggedId, collId)) return;
+        setDropTargetCollectionId(collId);
+        setDropPosition(position);
       },
-      onDragLeave: () => setDropTargetCollectionId(null),
-      onDrop: (e: React.DragEvent, collId: string) => {
+      onDrop: (e: React.DragEvent, collId: string, position: DropPosition) => {
         e.preventDefault();
-        setDropTargetCollectionId(null);
+        e.stopPropagation();
         const draggedId = draggedCollectionIdRef.current;
-        if (draggedId && collId !== draggedId && !isDescendant(draggedId, collId)) {
-          handleMoveCollection(draggedId, collId);
+        if (draggedId && draggedId !== collId) {
+          handleMoveCollection(draggedId, collId, position);
+        } else {
+          draggedCollectionIdRef.current = null;
+          setDraggedCollectionId(null);
+          setDropTargetCollectionId(null);
+          setDropPosition(null);
         }
-        draggedCollectionIdRef.current = null;
-        setDraggedCollectionId(null);
       },
       onDragEnd: () => {
         draggedCollectionIdRef.current = null;
         setDraggedCollectionId(null);
         setDropTargetCollectionId(null);
+        setDropPosition(null);
+      },
+      onContainerLeave: () => {
+        setDropTargetCollectionId(null);
+        setDropPosition(null);
+      },
+      onRootDrop: (e: React.DragEvent) => {
+        e.preventDefault();
+        const draggedId = draggedCollectionIdRef.current;
+        if (draggedId) {
+          handleMoveCollection(draggedId, null, "after");
+        }
+      },
+      onRootDragOver: (e: React.DragEvent) => {
+        e.preventDefault();
+        setDropTargetCollectionId(null);
+        setDropPosition(null);
       },
     }),
     [isDescendant, handleMoveCollection]
@@ -274,11 +349,13 @@ export function useCollections(
     newCollectionName,
     setNewCollectionName,
     dropTargetCollectionId,
+    dropPosition,
+    draggedCollectionId,
 
     treeSpaces,
 
     handleCreateCollection,
-    handleDeleteCollection,
+    handleDeleteCollection: handleDeleteCollection,
     handleUpdateCollection,
     handleMoveCollection,
     handleMoveCollectionUp,

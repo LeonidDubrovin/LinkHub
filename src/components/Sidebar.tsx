@@ -1,17 +1,15 @@
-import React from "react";
+import React, { useRef } from "react";
 import { cn } from "../lib/utils";
 import { Globe, Settings, Plus, BookOpen } from "lucide-react";
-import { SpaceWithCollections, Domain, Tag, Collection } from "../types";
+import { SpaceWithCollections, Domain, Collection } from "../types";
 import { DomainItem } from "./DomainItem";
-import { CollectionTree, DragHandlers } from "./CollectionTree";
+import { CollectionTree, DragHandlers, DropPosition } from "./CollectionTree";
 
 interface SidebarProps {
   treeSpaces: SpaceWithCollections[];
   domains: Domain[];
-  tags: Tag[];
   pinnedDomains: string[];
   selectedCollectionId: string | null;
-  selectedTagId: string | null;
   selectedDomain: string | null;
   isCreatingCollection: boolean;
   newCollectionName: string;
@@ -19,12 +17,12 @@ interface SidebarProps {
   setNewCollectionName: (v: string) => void;
   handleCreateCollection: () => void;
   onSelectCollection: (id: string | null) => void;
-  onSelectTag: (id: string | null) => void;
   onSelectDomain: (domain: string | null) => void;
   togglePinDomain: (domain: string, e: React.MouseEvent) => void;
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
   dropTargetCollectionId: string | null;
-  collectionBookmarkCounts: Map<string, number>;
+  dropPosition: DropPosition | null;
+  draggedCollectionId: string | null;
   dragHandlers: DragHandlers;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
@@ -33,10 +31,8 @@ interface SidebarProps {
 export function Sidebar({
   treeSpaces,
   domains,
-  tags,
   pinnedDomains,
   selectedCollectionId,
-  selectedTagId,
   selectedDomain,
   isCreatingCollection,
   newCollectionName,
@@ -44,16 +40,18 @@ export function Sidebar({
   setNewCollectionName,
   handleCreateCollection,
   onSelectCollection,
-  onSelectTag,
   onSelectDomain,
   togglePinDomain,
   onCollectionContextMenu,
   dropTargetCollectionId,
-  collectionBookmarkCounts,
+  dropPosition,
+  draggedCollectionId,
   dragHandlers,
   setIsSettingsOpen,
   setIsAdding,
 }: SidebarProps) {
+  const dragDepthRef = useRef(0);
+
   return (
     <div className="w-64 bg-[#f1f3f5] border-r border-slate-200 flex flex-col flex-shrink-0">
       <div className="p-4 flex items-center justify-between">
@@ -87,14 +85,10 @@ export function Sidebar({
             Filters
           </div>
           <button
-            onClick={() => {
-              onSelectCollection(null);
-              onSelectTag(null);
-              onSelectDomain(null);
-            }}
+            onClick={() => { onSelectCollection(null); onSelectDomain(null); }}
             className={cn(
               "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
-              !selectedCollectionId && !selectedTagId && !selectedDomain
+              !selectedCollectionId && !selectedDomain
                 ? "bg-blue-100 text-blue-700 font-medium"
                 : "hover:bg-slate-200 text-slate-700",
             )}
@@ -102,7 +96,7 @@ export function Sidebar({
             <Globe
               size={16}
               className={
-                !selectedCollectionId && !selectedTagId && !selectedDomain
+                !selectedCollectionId && !selectedDomain
                   ? "text-blue-600"
                   : "text-slate-400"
               }
@@ -143,29 +137,54 @@ export function Sidebar({
               />
             </div>
           )}
-          {treeSpaces.length === 0 ? (
-            <div className="text-xs text-slate-400 px-2">No collections</div>
-          ) : (
-            treeSpaces.map((space) => (
-              <div key={space.id} className="mb-2">
-                <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
-                  {space.name}
+          <div
+            onDragEnter={() => { dragDepthRef.current++; }}
+            onDragLeave={() => {
+              dragDepthRef.current--;
+              if (dragDepthRef.current === 0) {
+                dragHandlers.onContainerLeave();
+              }
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              dragDepthRef.current = 0;
+              dragHandlers.onRootDrop(e);
+            }}
+          >
+            {treeSpaces.length === 0 ? (
+              <div className="text-xs text-slate-400 px-2">No collections</div>
+            ) : (
+              treeSpaces.map((space) => (
+                <div key={space.id} className="mb-2">
+                  <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
+                    {space.name}
+                  </div>
+                  {space.collections && (
+                    <CollectionTree
+                      collections={space.collections}
+                      level={0}
+                      selectedCollectionId={selectedCollectionId}
+                      dropTargetCollectionId={dropTargetCollectionId}
+                      dropPosition={dropPosition}
+                      draggedCollectionId={draggedCollectionId}
+                      onSelect={(id) => onSelectCollection(id)}
+                      onContextMenu={onCollectionContextMenu}
+                      dragHandlers={dragHandlers}
+                    />
+                  )}
                 </div>
-                {space.collections && (
-                  <CollectionTree
-                    collections={space.collections}
-                    level={0}
-                    selectedCollectionId={selectedCollectionId}
-                    dropTargetCollectionId={dropTargetCollectionId}
-                    collectionBookmarkCounts={collectionBookmarkCounts}
-                    onSelect={(id) => { onSelectCollection(id); onSelectTag(null); onSelectDomain(null); }}
-                    onContextMenu={onCollectionContextMenu}
-                    dragHandlers={dragHandlers}
-                  />
-                )}
+              ))
+            )}
+            {draggedCollectionId && (
+              <div
+                onDragOver={(e) => { e.preventDefault(); dragHandlers.onRootDragOver(e); }}
+                onDrop={(e) => { e.stopPropagation(); dragHandlers.onRootDrop(e); }}
+                className="mt-1 mx-2 py-2 border border-dashed border-slate-300 rounded-md text-center text-xs text-slate-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-colors"
+              >
+                Drop here to move to root level
               </div>
-            ))
-          )}
+            )}
+          </div>
         </div>
 
         {pinnedDomains.length > 0 && (
@@ -182,7 +201,7 @@ export function Sidebar({
                     count={d.count}
                     isSelected={selectedDomain === d.domain}
                     isPinned={true}
-                    onSelect={(domain) => { onSelectDomain(domain); onSelectCollection(null); onSelectTag(null); }}
+                    onSelect={(domain) => onSelectDomain(domain)}
                     onTogglePin={togglePinDomain}
                   />
                 </div>
@@ -204,39 +223,11 @@ export function Sidebar({
                     count={d.count}
                     isSelected={selectedDomain === d.domain}
                     isPinned={false}
-                    onSelect={(domain) => { onSelectDomain(domain); onSelectCollection(null); onSelectTag(null); }}
+                    onSelect={(domain) => onSelectDomain(domain)}
                     onTogglePin={togglePinDomain}
                   />
                 </div>
               ))}
-          </div>
-        )}
-
-        {tags.length > 0 && (
-          <div className="px-3 mb-4">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-              Tags
-            </div>
-            <div className="flex flex-wrap gap-1 px-2">
-              {tags.map((tag) => (
-                <button
-                  key={tag.id}
-                  onClick={() => {
-                    onSelectTag(tag.id);
-                    onSelectCollection(null);
-                    onSelectDomain(null);
-                  }}
-                  className={cn(
-                    "text-xs px-2 py-1 rounded-md border transition-colors",
-                    selectedTagId === tag.id
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white border-slate-200 text-slate-600 hover:border-slate-300",
-                  )}
-                >
-                  #{tag.name}
-                </button>
-              ))}
-            </div>
           </div>
         )}
       </div>

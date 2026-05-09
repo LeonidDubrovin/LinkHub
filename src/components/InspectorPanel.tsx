@@ -6,7 +6,6 @@ import { getDomain } from "../utils";
 import { FaviconImg } from "./FaviconImg";
 import { Bookmark, Collection, Tag } from "../types";
 import { CollectionCheckboxTree } from "./CollectionCheckboxTree";
-import { DragHandlers } from "./CollectionTree";
 
 interface ReaderContent {
   title: string;
@@ -39,7 +38,6 @@ interface InspectorPanelProps {
   onUpdateBookmarkCollections: (bookmarkId: string, collectionIds: string[]) => void;
   onToggleEditingCollections: () => void;
   onSelectCollectionForEdit: (id: string, checked: boolean) => void;
-  dragHandlers: DragHandlers;
   getYouTubeId: (url: string) => string | null;
 }
 
@@ -68,7 +66,6 @@ export function InspectorPanel({
   onUpdateBookmarkCollections,
   onToggleEditingCollections,
   onSelectCollectionForEdit,
-  dragHandlers,
   getYouTubeId,
   }: InspectorPanelProps) {
   if (!selectedBookmark || !isInspectorOpen) {
@@ -348,7 +345,6 @@ export function InspectorPanel({
                         level={0}
                         selectedIds={selectedCollectionIdsForEdit}
                         onToggle={onSelectCollectionForEdit}
-                        dragHandlers={dragHandlers}
                       />
                     )}
                   </div>

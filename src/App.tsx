@@ -29,7 +29,6 @@ export default function App() {
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
-  const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [isEditingCollections, setIsEditingCollections] = useState(false);
   const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
@@ -43,21 +42,30 @@ export default function App() {
   });
 
   const fetchBookmarks = useCallback(async () => {
-    await bm.fetchBookmarks(selectedCollectionId, selectedTagId, selectedDomain);
-  }, [bm.fetchBookmarks, selectedCollectionId, selectedTagId, selectedDomain]);
+    await bm.fetchBookmarks(selectedCollectionId, null, selectedDomain);
+  }, [bm.fetchBookmarks, selectedCollectionId, selectedDomain]);
 
   const fetchAll = useCallback(async () => {
-    await Promise.all([api.fetchSpaces(), api.fetchCollections(), api.fetchTags(), api.fetchDomains()]);
-  }, [api.fetchSpaces, api.fetchCollections, api.fetchTags, api.fetchDomains]);
+    await Promise.all([api.fetchSpaces(), api.fetchCollections(), api.fetchDomains()]);
+  }, [api.fetchSpaces, api.fetchCollections, api.fetchDomains]);
 
   useEffect(() => { api.initialize(); }, []);
 
   useEffect(() => {
-    fetchBookmarks();
+    bm.fetchBookmarks(selectedCollectionId, null, selectedDomain);
     bm.setSelectedBookmark(null);
     insp.setIsInspectorOpen(false);
     insp.setReaderContent(null);
-  }, [selectedCollectionId, selectedTagId, selectedDomain]);
+  }, [selectedCollectionId, selectedDomain]);
+
+  const handleSelectCollection = useCallback((id: string | null) => {
+    setSelectedCollectionId(id);
+    if (id) setSelectedDomain(null);
+  }, []);
+  const handleSelectDomain = useCallback((d: string | null) => {
+    setSelectedDomain(d);
+    if (d) setSelectedCollectionId(null);
+  }, []);
 
   useEffect(() => {
     if (bm.selectedBookmark) {
@@ -108,8 +116,8 @@ export default function App() {
   );
 
   const handleCategorizeAll = useCallback(
-    async () => { await bm.handleCategorizeAll(fetchBookmarks, api.fetchCollections, api.fetchTags); },
-    [bm.handleCategorizeAll, fetchBookmarks, api.fetchCollections, api.fetchTags]
+    async () => { await bm.handleCategorizeAll(fetchBookmarks, api.fetchCollections); },
+    [bm.handleCategorizeAll, fetchBookmarks, api.fetchCollections]
   );
 
   const handleBackup = useCallback(async () => {
@@ -153,7 +161,6 @@ export default function App() {
           setToast({ message: "Backup restored successfully", type: "success" });
           bm.setSelectedBookmark(null);
           setSelectedCollectionId(null);
-          setSelectedTagId(null);
           setSelectedDomain(null);
           await fetchBookmarks();
           await fetchAll();
@@ -167,21 +174,9 @@ export default function App() {
     });
   }, [fetchBookmarks, fetchAll]);
 
-  const collectionBookmarkCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const b of bm.bookmarks) {
-      for (const c of b.collections || []) {
-        counts.set(c.id, (counts.get(c.id) || 0) + 1);
-      }
-    }
-    return counts;
-  }, [bm.bookmarks]);
-
   const allCollectionsTree = useMemo(
-    () => buildCollectionTree(api.collections, null, (item) => ({
-      bookmarkCount: collectionBookmarkCounts.get(item.id) || 0,
-    })),
-    [api.collections, collectionBookmarkCounts]
+    () => buildCollectionTree(api.collections, null),
+    [api.collections]
   );
 
   const filteredBookmarks = useMemo(
@@ -237,23 +232,21 @@ export default function App() {
         <Sidebar
           treeSpaces={coll.treeSpaces}
           domains={api.domains}
-          tags={api.tags}
           pinnedDomains={ui.pinnedDomains}
           selectedCollectionId={selectedCollectionId}
-          selectedTagId={selectedTagId}
           selectedDomain={selectedDomain}
           isCreatingCollection={coll.isCreatingCollection}
           newCollectionName={coll.newCollectionName}
           setIsCreatingCollection={coll.setIsCreatingCollection}
           setNewCollectionName={coll.setNewCollectionName}
           handleCreateCollection={coll.handleCreateCollection}
-          onSelectCollection={(id) => { setSelectedCollectionId(id); setSelectedTagId(null); setSelectedDomain(null); }}
-          onSelectTag={(id) => { setSelectedTagId(id); setSelectedCollectionId(null); setSelectedDomain(null); }}
-          onSelectDomain={(d) => { setSelectedDomain(d); setSelectedCollectionId(null); setSelectedTagId(null); }}
+          onSelectCollection={handleSelectCollection}
+          onSelectDomain={handleSelectDomain}
           togglePinDomain={ui.togglePinDomain}
           onCollectionContextMenu={coll.handleContextMenu}
           dropTargetCollectionId={coll.dropTargetCollectionId}
-          collectionBookmarkCounts={collectionBookmarkCounts}
+          dropPosition={coll.dropPosition}
+          draggedCollectionId={coll.draggedCollectionId}
           dragHandlers={coll.dragHandlers}
           setIsSettingsOpen={setIsSettingsOpen}
           setIsAdding={bm.setIsAdding}
@@ -270,10 +263,10 @@ export default function App() {
           sortBy={ui.sortBy}
           filterBy={ui.filterBy}
           selectedCollectionId={selectedCollectionId}
-          selectedTagId={selectedTagId}
+          selectedTagId={null}
           selectedDomain={selectedDomain}
           collections={api.collections}
-          tags={api.tags}
+          tags={[]}
           onSelectBookmark={onSelectBookmark}
           onToggleSelectAll={toggleSelectAll}
           onToggleBookmarkSelection={bm.toggleBookmarkSelection}
@@ -323,7 +316,6 @@ export default function App() {
             if (checked) setSelectedCollectionIdsForEdit((prev) => [...prev, id]);
             else setSelectedCollectionIdsForEdit((prev) => prev.filter((x) => x !== id));
           }}
-          dragHandlers={coll.dragHandlers}
           getYouTubeId={getYouTubeId}
         />
       </div>
