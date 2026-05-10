@@ -64,6 +64,10 @@ export const apiClient = {
       apiClient.post<{ success: boolean; collections: Collection[] }>(`/api/bookmarks/${bookmarkId}/collections`, { collectionIds }),
     removeFromBookmark: (bookmarkId: string, collectionId: string) =>
       apiClient.del<{ success: boolean }>(`/api/bookmarks/${bookmarkId}/collections/${collectionId}`),
+    addBookmarksToCollection: (collectionId: string, bookmarkIds: string[]) =>
+      apiClient.post<{ success: boolean; count: number }>(`/api/collections/${collectionId}/bookmarks`, { bookmarkIds }),
+    addBookmarkToCollection: (bookmarkId: string, collectionId: string) =>
+      apiClient.post<{ success: boolean }>(`/api/bookmarks/${bookmarkId}/collections/${collectionId}`, {}),
   },
 
   bookmarks: {

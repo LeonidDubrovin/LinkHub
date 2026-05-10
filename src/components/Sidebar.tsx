@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { cn } from "../lib/utils";
 import { Globe, Trash2, Settings, Plus, BookOpen } from "lucide-react";
 import { Domain, Collection } from "../types";
 import { DomainItem } from "./DomainItem";
-import { Tree } from "react-arborist";
+import { Tree, TreeApi } from "react-arborist";
 import { DndProvider, useDragDropManager } from "react-dnd";
 import { TouchBackend } from "react-dnd-touch-backend";
 import { ArboristNode } from "./ArboristNode";
@@ -34,10 +34,22 @@ interface SidebarProps {
   togglePinDomain: (domain: string, e: React.MouseEvent) => void;
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
+  onDropBookmarks: (collectionId: string, bookmarkIds: string[]) => void;
   sidebarWidth: number;
   onSidebarResizeStart: () => void;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
+}
+
+function countVisibleNodes(nodes: ArboristNodeData[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    count++;
+    if (node.children && node.children.length > 0) {
+      count += countVisibleNodes(node.children);
+    }
+  }
+  return count;
 }
 
 function CollectionTreeInner(props: {
@@ -49,11 +61,15 @@ function CollectionTreeInner(props: {
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
   handleCreateCollectionForSpace: (spaceId: string) => void;
+  onDropBookmarks: (collectionId: string, bookmarkIds: string[]) => void;
+  onTreeRef: (tree: TreeApi<ArboristNodeData> | undefined) => void;
+  onToggle: () => void;
 }) {
   const dndManager = useDragDropManager();
 
   return (
     <Tree<ArboristNodeData>
+      ref={props.onTreeRef}
       data={props.arboristData}
       onMove={props.onArboristMove}
       onSelect={(nodes) => {
@@ -62,6 +78,7 @@ function CollectionTreeInner(props: {
           props.onSelectCollection(node.id);
         }
       }}
+      onToggle={props.onToggle}
       selection={props.selectedCollectionId ?? undefined}
       disableDrag={(data: ArboristNodeData) => data.isGroup || data.id === "inbox-collection"}
       disableDrop={({ parentNode }: { parentNode: any; dragNodes: any[]; index: number }) => !parentNode}
@@ -72,7 +89,7 @@ function CollectionTreeInner(props: {
       indent={12}
       rowHeight={32}
       openByDefault={true}
-      className="!overflow-y-auto !overflow-x-hidden"
+      className="!overflow-visible"
     >
       {(nodeProps) => (
         <ArboristNode
@@ -80,6 +97,7 @@ function CollectionTreeInner(props: {
           onSelectCollection={(id) => props.onSelectCollection(id)}
           onContextMenu={props.onCollectionContextMenu}
           onCreateCollection={props.handleCreateCollectionForSpace}
+          onDropBookmarks={props.onDropBookmarks}
         />
       )}
     </Tree>
@@ -111,25 +129,27 @@ export function Sidebar({
   togglePinDomain,
   onCollectionContextMenu,
   onArboristMove,
+  onDropBookmarks,
   sidebarWidth,
   onSidebarResizeStart,
   setIsSettingsOpen,
   setIsAdding,
 }: SidebarProps) {
   const nothingSelected = !selectedCollectionId && !selectedDomain && !isViewingTrash;
-  const treeContainerRef = useRef<HTMLDivElement>(null);
-  const [treeHeight, setTreeHeight] = useState(400);
+  const treeRef = useRef<TreeApi<ArboristNodeData> | undefined>(undefined);
+
+  const initialVisibleCount = useMemo(() => countVisibleNodes(arboristData), [arboristData]);
+  const [treeHeight, setTreeHeight] = useState(() => initialVisibleCount * 32);
 
   useEffect(() => {
-    if (!treeContainerRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const h = Math.floor(entry.contentRect.height);
-        if (h > 0) setTreeHeight(h);
-      }
-    });
-    observer.observe(treeContainerRef.current);
-    return () => observer.disconnect();
+    setTreeHeight(initialVisibleCount * 32);
+  }, [initialVisibleCount]);
+
+  const updateTreeHeight = useCallback(() => {
+    const tree = treeRef.current;
+    if (tree) {
+      setTreeHeight(tree.visibleNodes.length * 32);
+    }
   }, []);
 
   const handleCreateCollectionForSpace = useCallback(
@@ -174,135 +194,140 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="px-3 mb-3 flex-shrink-0">
-        <button
-          onClick={() => { onSelectCollection(null); onSelectDomain(null); }}
-          className={cn(
-            "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
-            nothingSelected
-              ? "bg-blue-100 text-blue-700 font-medium"
-              : "hover:bg-slate-200 text-slate-700"
-          )}
-        >
-          <Globe size={16} className={nothingSelected ? "text-blue-600" : "text-slate-400"} />
-          All Bookmarks
-        </button>
-        <button
-          onClick={onSelectTrash}
-          className={cn(
-            "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
-            isViewingTrash
-              ? "bg-blue-100 text-blue-700 font-medium"
-              : "hover:bg-slate-200 text-slate-700"
-          )}
-        >
-          <Trash2 size={16} className={isViewingTrash ? "text-blue-600" : "text-slate-400"} />
-          Trash
-        </button>
-      </div>
-
-      <div className="px-3 mb-1 flex-shrink-0">
-        <div className="flex items-center justify-between px-2 mb-1">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Groups
-          </div>
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="px-3 mb-3">
           <button
-            onClick={() => setIsCreatingGroup(true)}
-            className="text-[10px] text-slate-400 hover:text-blue-500 transition-colors"
-            title="New group"
+            onClick={() => { onSelectCollection(null); onSelectDomain(null); }}
+            className={cn(
+              "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
+              nothingSelected
+                ? "bg-blue-100 text-blue-700 font-medium"
+                : "hover:bg-slate-200 text-slate-700"
+            )}
           >
-            + Group
+            <Globe size={16} className={nothingSelected ? "text-blue-600" : "text-slate-400"} />
+            All Bookmarks
+          </button>
+          <button
+            onClick={onSelectTrash}
+            className={cn(
+              "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
+              isViewingTrash
+                ? "bg-blue-100 text-blue-700 font-medium"
+                : "hover:bg-slate-200 text-slate-700"
+            )}
+          >
+            <Trash2 size={16} className={isViewingTrash ? "text-blue-600" : "text-slate-400"} />
+            Trash
           </button>
         </div>
-        {isCreatingGroup && (
-          <div className="mb-2 px-2">
+
+        <div className="px-3 mb-1">
+          <div className="flex items-center justify-between px-2 mb-1">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Groups
+            </div>
+            <button
+              onClick={() => setIsCreatingGroup(true)}
+              className="text-[10px] text-slate-400 hover:text-blue-500 transition-colors"
+              title="New group"
+            >
+              + Group
+            </button>
+          </div>
+          {isCreatingGroup && (
+            <div className="mb-2 px-2">
+              <input
+                autoFocus
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="Group name"
+                className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateGroup();
+                  else if (e.key === "Escape") { setIsCreatingGroup(false); setNewGroupName(""); }
+                }}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="px-3 mb-1">
+          <DndProvider backend={TouchBackend} options={{ enableMouseEvents: true, delayTouchStart: 0, delayMouseStart: 0 }}>
+            <CollectionTreeInner
+              arboristData={arboristData}
+              selectedCollectionId={selectedCollectionId}
+              treeHeight={treeHeight}
+              sidebarWidth={sidebarWidth}
+              onSelectCollection={onSelectCollection}
+              onCollectionContextMenu={onCollectionContextMenu}
+              onArboristMove={onArboristMove}
+              handleCreateCollectionForSpace={handleCreateCollectionForSpace}
+              onDropBookmarks={onDropBookmarks}
+              onTreeRef={(tree) => { treeRef.current = tree; }}
+              onToggle={() => { requestAnimationFrame(updateTreeHeight); }}
+            />
+          </DndProvider>
+        </div>
+
+        {isCreatingCollection && createCollectionSpaceId && (
+          <div className="px-5 pb-1">
             <input
               autoFocus
               type="text"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="Group name"
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              placeholder="Collection name"
               className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateGroup();
-                else if (e.key === "Escape") { setIsCreatingGroup(false); setNewGroupName(""); }
+                if (e.key === "Enter") handleCreateCollection();
+                else if (e.key === "Escape") { setIsCreatingCollection(false); setNewCollectionName(""); setCreateCollectionSpaceId(null); }
               }}
             />
           </div>
         )}
-      </div>
 
-      <div ref={treeContainerRef} className="flex-1 min-h-0 px-3 mb-1">
-        <DndProvider backend={TouchBackend} options={{ enableMouseEvents: true, delayTouchStart: 0, delayMouseStart: 0 }}>
-          <CollectionTreeInner
-            arboristData={arboristData}
-            selectedCollectionId={selectedCollectionId}
-            treeHeight={treeHeight}
-            sidebarWidth={sidebarWidth}
-            onSelectCollection={onSelectCollection}
-            onCollectionContextMenu={onCollectionContextMenu}
-            onArboristMove={onArboristMove}
-            handleCreateCollectionForSpace={handleCreateCollectionForSpace}
-          />
-        </DndProvider>
-      </div>
-
-      {isCreatingCollection && createCollectionSpaceId && (
-        <div className="px-5 pb-1 flex-shrink-0">
-          <input
-            autoFocus
-            type="text"
-            value={newCollectionName}
-            onChange={(e) => setNewCollectionName(e.target.value)}
-            placeholder="Collection name"
-            className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleCreateCollection();
-              else if (e.key === "Escape") { setIsCreatingCollection(false); setNewCollectionName(""); setCreateCollectionSpaceId(null); }
-            }}
-          />
-        </div>
-      )}
-
-      {pinnedDomainItems.length > 0 && (
-        <div className="px-3 mb-2 flex-shrink-0 max-h-40 overflow-y-auto">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-            Pinned
-          </div>
-          {pinnedDomainItems.map((d) => (
-            <div key={`pinned-${d.domain}`}>
-              <DomainItem
-                domain={d.domain}
-                count={d.count}
-                isSelected={selectedDomain === d.domain}
-                isPinned={true}
-                onSelect={(domain) => onSelectDomain(domain)}
-                onTogglePin={togglePinDomain}
-              />
+        {pinnedDomainItems.length > 0 && (
+          <div className="px-3 mb-2">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
+              Pinned
             </div>
-          ))}
-        </div>
-      )}
-
-      {otherDomainItems.length > 0 && (
-        <div className="px-3 mb-2 flex-shrink-0 max-h-40 overflow-y-auto">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-            Resources
+            {pinnedDomainItems.map((d) => (
+              <div key={`pinned-${d.domain}`}>
+                <DomainItem
+                  domain={d.domain}
+                  count={d.count}
+                  isSelected={selectedDomain === d.domain}
+                  isPinned={true}
+                  onSelect={(domain) => onSelectDomain(domain)}
+                  onTogglePin={togglePinDomain}
+                />
+              </div>
+            ))}
           </div>
-          {otherDomainItems.map((d) => (
-            <div key={d.domain}>
-              <DomainItem
-                domain={d.domain}
-                count={d.count}
-                isSelected={selectedDomain === d.domain}
-                isPinned={false}
-                onSelect={(domain) => onSelectDomain(domain)}
-                onTogglePin={togglePinDomain}
-              />
+        )}
+
+        {otherDomainItems.length > 0 && (
+          <div className="px-3 mb-2">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
+              Resources
             </div>
-          ))}
-        </div>
-      )}
+            {otherDomainItems.map((d) => (
+              <div key={d.domain}>
+                <DomainItem
+                  domain={d.domain}
+                  count={d.count}
+                  isSelected={selectedDomain === d.domain}
+                  isPinned={false}
+                  onSelect={(domain) => onSelectDomain(domain)}
+                  onTogglePin={togglePinDomain}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div
         className="absolute right-0 top-0 bottom-0 w-2 mr-[-4px] cursor-col-resize z-10 group flex justify-center"

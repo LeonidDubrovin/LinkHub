@@ -315,6 +315,22 @@ export function useCollections(
     [collections, handleUpdateCollection]
   );
 
+  const handleDropBookmarks = useCallback(
+    async (collectionId: string, bookmarkIds: string[]) => {
+      try {
+        const result = await apiClient.collections.addBookmarksToCollection(collectionId, bookmarkIds);
+        if (result.success) {
+          await fetchCollections();
+          setToast({ message: `${bookmarkIds.length} bookmark${bookmarkIds.length > 1 ? "s" : ""} added to collection`, type: "success" });
+        }
+      } catch (error) {
+        const msg = error instanceof ApiError ? error.message : "Failed to add bookmarks to collection";
+        setToast({ message: msg, type: "error" });
+      }
+    },
+    [fetchCollections, setToast]
+  );
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, coll: Collection) => {
       e.preventDefault();
@@ -392,6 +408,7 @@ export function useCollections(
     handleContextMenu,
     handleRenameSubmit,
     handleChangeIconSubmit,
+    handleDropBookmarks,
     getSiblings,
     isDescendant,
   };

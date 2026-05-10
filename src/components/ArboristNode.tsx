@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 import { Icon } from "./Icon";
 import { cn } from "../lib/utils";
@@ -6,10 +6,13 @@ import { ArboristNodeData } from "../utils/arboristData";
 import { NodeRendererProps } from "react-arborist";
 import { Collection } from "../types";
 
+export const BOOKMARK_DRAG_TYPE = "application/linkhub-bookmark";
+
 interface ArboristNodeProps extends NodeRendererProps<ArboristNodeData> {
   onSelectCollection: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, coll: Collection) => void;
   onCreateCollection: (spaceId: string) => void;
+  onDropBookmarks?: (collectionId: string, bookmarkIds: string[]) => void;
 }
 
 export const ArboristNode = React.memo(function ArboristNode({
@@ -19,8 +22,38 @@ export const ArboristNode = React.memo(function ArboristNode({
   onSelectCollection,
   onContextMenu,
   onCreateCollection,
+  onDropBookmarks,
 }: ArboristNodeProps) {
   const data = node.data;
+  const [isBookmarkOver, setIsBookmarkOver] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes(BOOKMARK_DRAG_TYPE)) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = "copy";
+      setIsBookmarkOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.stopPropagation();
+    setIsBookmarkOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsBookmarkOver(false);
+    if (!onDropBookmarks || data.isGroup) return;
+    try {
+      const payload = e.dataTransfer.getData(BOOKMARK_DRAG_TYPE);
+      if (payload) {
+        const ids: string[] = JSON.parse(payload);
+        onDropBookmarks(data.id, ids);
+      }
+    } catch {}
+  }, [onDropBookmarks, data.id, data.isGroup]);
 
   if (data.isGroup) {
     return (
@@ -82,14 +115,18 @@ export const ArboristNode = React.memo(function ArboristNode({
       className={cn(
         "flex items-center gap-2 py-1.5 rounded-md text-sm mb-px select-none cursor-pointer",
         isDragging && "opacity-40",
-        isSelected
+        isBookmarkOver && "bg-blue-50 ring-2 ring-green-400 ring-offset-[-1px]",
+        !isBookmarkOver && isSelected
           ? "bg-blue-100 text-blue-700 font-medium"
-          : willReceiveDrop
+          : !isBookmarkOver && willReceiveDrop
             ? "bg-blue-50 ring-2 ring-blue-400 ring-offset-[-1px]"
-            : "hover:bg-slate-100 text-slate-700"
+            : !isBookmarkOver && "hover:bg-slate-100 text-slate-700"
       )}
       onClick={() => onSelectCollection(data.id)}
       onContextMenu={(e) => onContextMenu(e, collection)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
       {node.isInternal && !data.isGroup && (node.children?.length ?? 0) > 0 ? (
         <span

@@ -108,6 +108,41 @@ router.get("/bookmarks/:id/collections", (req, res) => {
   }
 });
 
+router.post("/collections/:collectionId/bookmarks", (req, res) => {
+  try {
+    const { collectionId } = req.params;
+    const { bookmarkIds } = req.body;
+    if (!Array.isArray(bookmarkIds)) return badRequest(res, "bookmarkIds array is required");
+    if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
+    const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+    const setCategory = db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ? AND category_id IS NULL");
+    db.transaction(() => {
+      for (const bmId of bookmarkIds) {
+        insert.run(bmId, collectionId);
+        setCategory.run(collectionId, bmId);
+      }
+    })();
+    sendJson(res, { success: true, count: bookmarkIds.length });
+  } catch (error: any) {
+    internalError(res, error);
+  }
+});
+
+router.post("/bookmarks/:id/collections/:collectionId", (req, res) => {
+  try {
+    const { id, collectionId } = req.params;
+    if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
+    db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, collectionId);
+    const bookmark = db.prepare("SELECT category_id FROM bookmarks WHERE id = ?").get(id) as any;
+    if (!bookmark || !bookmark.category_id) {
+      db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionId, id);
+    }
+    sendJson(res, { success: true });
+  } catch (error: any) {
+    internalError(res, error);
+  }
+});
+
 router.post("/bookmarks/:id/collections", (req, res) => {
   try {
     const { id } = req.params;

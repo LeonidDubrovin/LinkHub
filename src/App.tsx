@@ -312,6 +312,7 @@ export default function App() {
           togglePinDomain={ui.togglePinDomain}
           onCollectionContextMenu={coll.handleContextMenu}
           onArboristMove={coll.handleArboristMove}
+          onDropBookmarks={coll.handleDropBookmarks}
           sidebarWidth={sidebarWidth}
           onSidebarResizeStart={() => setIsSidebarDragging(true)}
           setIsSettingsOpen={setIsSettingsOpen}

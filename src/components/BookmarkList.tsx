@@ -4,6 +4,7 @@ import { cn } from "../lib/utils";
 import { DynamicCover } from "./DynamicCover";
 import { getDomain } from "../utils";
 import { Bookmark, Collection, Tag } from "../types";
+import { BOOKMARK_DRAG_TYPE } from "./ArboristNode";
 
 type SortBy = "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc";
 type FilterBy = "all" | "has_images" | "has_summary" | "has_content";
@@ -231,6 +232,14 @@ export function BookmarkList({
               return (
               <div
                 key={bookmark.id}
+                draggable
+                onDragStart={(e) => {
+                  const ids = selectedBookmarkIds.has(bookmark.id)
+                    ? Array.from(selectedBookmarkIds)
+                    : [bookmark.id];
+                  e.dataTransfer.setData(BOOKMARK_DRAG_TYPE, JSON.stringify(ids));
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onSelectBookmark(bookmark);
