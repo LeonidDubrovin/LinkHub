@@ -30,7 +30,7 @@ interface SidebarProps {
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
   onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
-  onDropBookmarks: (collectionId: string, bookmarkIds: string[]) => void;
+  onDropBookmarks: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => void;
   sidebarWidth: number;
   onSidebarResizeStart: () => void;
   setIsSettingsOpen: (v: boolean) => void;
@@ -58,7 +58,7 @@ function CollectionTreeInner(props: {
   onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
   handleCreateCollectionForSpace: (spaceId: string) => void;
-  onDropBookmarks: (collectionId: string, bookmarkIds: string[]) => void;
+  onDropBookmarks: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => void;
   onTreeRef: (tree: TreeApi<ArboristNodeData> | undefined) => void;
   onToggle: () => void;
 }) {

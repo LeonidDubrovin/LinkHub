@@ -39,6 +39,7 @@ interface BookmarkListProps {
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   onBookmarkContextMenu?: (e: React.MouseEvent, bookmark: Bookmark) => void;
+  onDropBookmarks?: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => void;
 }
 
 function SkeletonCard({ viewMode, itemSize }: { viewMode: "list" | "grid"; itemSize: "small" | "medium" | "large" }) {
@@ -304,7 +305,10 @@ export function BookmarkList({
                     ? Array.from(selectedBookmarkIds)
                     : [id];
                   e.dataTransfer.setData(BOOKMARK_DRAG_TYPE, JSON.stringify(ids));
-                  e.dataTransfer.effectAllowed = "copy";
+                  if (selectedCollectionId) {
+                    e.dataTransfer.setData("application/linkhub-source-collection", selectedCollectionId);
+                  }
+                  e.dataTransfer.effectAllowed = "move";
                 }}
                 onContextMenu={onBookmarkContextMenu}
               />

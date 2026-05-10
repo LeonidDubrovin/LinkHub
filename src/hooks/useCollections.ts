@@ -326,15 +326,23 @@ export function useCollections(
   );
 
   const handleDropBookmarks = useCallback(
-    async (collectionId: string, bookmarkIds: string[]) => {
+    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => {
       try {
+        // If dragged from a specific collection, remove from source first (move)
+        if (sourceCollectionId) {
+          await Promise.all(
+            bookmarkIds.map((id) =>
+              apiClient.collections.removeFromBookmark(id, sourceCollectionId)
+            )
+          );
+        }
         const result = await apiClient.collections.addBookmarksToCollection(collectionId, bookmarkIds);
         if (result.success) {
           await fetchCollections();
-          setToast({ message: `${bookmarkIds.length} bookmark${bookmarkIds.length > 1 ? "s" : ""} added to collection`, type: "success" });
+          setToast({ message: `${bookmarkIds.length} bookmark${bookmarkIds.length > 1 ? "s" : ""} moved to collection`, type: "success" });
         }
       } catch (error) {
-        const msg = error instanceof ApiError ? error.message : "Failed to add bookmarks to collection";
+        const msg = error instanceof ApiError ? error.message : "Failed to move bookmarks to collection";
         setToast({ message: msg, type: "error" });
       }
     },
