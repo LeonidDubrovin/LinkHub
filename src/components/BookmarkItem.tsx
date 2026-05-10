@@ -162,7 +162,9 @@ function BookmarkItemInner({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            window.open(bookmark.url, "_blank");
+            if (/^https?:\/\//i.test(bookmark.url)) {
+              window.open(bookmark.url, "_blank", "noopener,noreferrer");
+            }
           }}
           className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md"
           title="Open in browser"

@@ -24,6 +24,8 @@ function isSafeProxyUrl(urlStr: string): boolean {
 
 const router = express.Router();
 
+const MAX_PROXY_RESPONSE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 router.get("/proxy", async (req, res) => {
   const url = typeof req.query.url === 'string' ? req.query.url : null;
   if (!url) return res.status(400).send("URL is required");
@@ -38,15 +40,17 @@ router.get("/proxy", async (req, res) => {
       "Accept-Language": "en-US,en;q=0.5",
       "X-Forwarded-For": "66.249.66.1",
     };
-    if (req.headers.cookie) headers["Cookie"] = req.headers.cookie;
+    // Do NOT forward client cookies to prevent credential theft via SSRF
 
-    const response = await fetch(url, { headers });
-    if (typeof response.headers.getSetCookie === 'function') {
-      const cookies = response.headers.getSetCookie();
-      if (cookies && cookies.length > 0) res.setHeader("Set-Cookie", cookies);
-    } else {
-      const setCookie = response.headers.get("set-cookie");
-      if (setCookie) res.setHeader("Set-Cookie", setCookie);
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(30000),
+    });
+
+    // Reject responses that are too large
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > MAX_PROXY_RESPONSE_SIZE) {
+      return res.status(403).send("Response too large");
     }
 
     const serverHeader = response.headers.get("server")?.toLowerCase() || "";
@@ -55,6 +59,10 @@ router.get("/proxy", async (req, res) => {
     if (contentType && !contentType.includes("text/html")) return res.redirect(url);
 
     let html = await response.text();
+    if (html.length > MAX_PROXY_RESPONSE_SIZE) {
+      return res.status(403).send("Response too large");
+    }
+
     const finalUrl = response.url || url;
     if (!isCloudflare || (response.status !== 403 && response.status !== 503)) {
       const baseTag = `<base href="${finalUrl}">`;

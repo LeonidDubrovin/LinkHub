@@ -33,7 +33,10 @@ export function useCollections(
     (candidateAncestorId: string, descendantId: string): boolean => {
       if (candidateAncestorId === descendantId) return true;
       let curr = collections.find((c) => c.id === descendantId);
+      const visited = new Set<string>();
       while (curr && curr.parent_id) {
+        if (visited.has(curr.id)) break; // cycle detected
+        visited.add(curr.id);
         if (curr.parent_id === candidateAncestorId) return true;
         curr = collections.find((c) => c.id === curr!.parent_id);
       }

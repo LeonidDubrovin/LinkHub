@@ -14,8 +14,11 @@ const router = express.Router();
 router.get("/spaces", (req, res) => {
   try {
     const spaces = db.prepare(`
-      SELECT s.*, (SELECT COUNT(*) FROM collections WHERE space_id = s.id) as collectionCount
-      FROM spaces s ORDER BY s.name
+      SELECT s.*, COUNT(c.id) as collectionCount
+      FROM spaces s
+      LEFT JOIN collections c ON c.space_id = s.id
+      GROUP BY s.id
+      ORDER BY s.name
     `).all();
     res.json(spaces);
   } catch (error: any) {

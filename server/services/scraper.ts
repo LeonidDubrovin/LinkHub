@@ -15,8 +15,13 @@ function ensureFaviconsDir() {
   return dir;
 }
 
+function sanitizeDomainForPath(domain: string): string {
+  return domain.replace(/[^a-zA-Z0-9._-]/g, "");
+}
+
 export function getFaviconPath(domain: string): string {
-  return path.join(ensureFaviconsDir(), `${domain}.png`);
+  const safe = sanitizeDomainForPath(domain);
+  return path.join(ensureFaviconsDir(), `${safe}.png`);
 }
 
 export async function downloadAndCacheFavicon(domain: string, htmlUrl?: string): Promise<boolean> {
@@ -100,8 +105,9 @@ export async function fetchBookmarkData(url: string) {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
+      signal: AbortSignal.timeout(30000),
     });
-    
+
     if (!response.ok && response.status !== 404) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -109,7 +115,9 @@ export async function fetchBookmarkData(url: string) {
   } catch (e) {
     console.error(`Fetch failed with ${userAgent}, trying generic...`, e);
     try {
-      const fallbackResponse = await fetch(url);
+      const fallbackResponse = await fetch(url, {
+        signal: AbortSignal.timeout(30000),
+      });
       if (!fallbackResponse.ok && fallbackResponse.status !== 404) {
         throw new Error(`Fallback HTTP error! status: ${fallbackResponse.status}`);
       }

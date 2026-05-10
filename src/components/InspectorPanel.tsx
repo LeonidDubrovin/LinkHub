@@ -1,11 +1,16 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { BookOpen, Globe, Shield, X, RefreshCw, Trash2, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
+import DOMPurify from "dompurify";
 import { cn } from "../lib/utils";
 import { getDomain } from "../utils";
 import { FaviconImg } from "./FaviconImg";
 import { Bookmark, Collection, Tag } from "../types";
 import { CollectionCheckboxTree } from "./CollectionCheckboxTree";
+
+function isHttpUrl(url: string): boolean {
+  return /^https?:\/\//i.test(url);
+}
 
 interface ReaderContent {
   title: string;
@@ -178,7 +183,7 @@ export function InspectorPanel({
                 )}
                 <div
                   className="prose prose-sm prose-slate max-w-none prose-img:rounded-lg prose-a:text-blue-600"
-                  dangerouslySetInnerHTML={{ __html: readerContent.content }}
+                  dangerouslySetInnerHTML={{ __html: useMemo(() => DOMPurify.sanitize(readerContent.content), [readerContent.content]) }}
                 />
               </>
             ) : (
@@ -242,14 +247,21 @@ export function InspectorPanel({
                 </div>
               )}
             </div>
-            <iframe
-              key={`${selectedBookmark.id}-${webPreviewMode}-${webPreviewKey}`}
-              src={webPreviewMode === 'proxy'
-                ? `/api/proxy?url=${encodeURIComponent(selectedBookmark.url)}`
-                : selectedBookmark.url}
-              className="w-full flex-1 border-0 bg-white"
-              title="Web Preview"
-            />
+            {isHttpUrl(selectedBookmark.url) ? (
+              <iframe
+                key={`${selectedBookmark.id}-${webPreviewMode}-${webPreviewKey}`}
+                src={webPreviewMode === 'proxy'
+                  ? `/api/proxy?url=${encodeURIComponent(selectedBookmark.url)}`
+                  : selectedBookmark.url}
+                className="w-full flex-1 border-0 bg-white"
+                title="Web Preview"
+                sandbox="allow-scripts allow-same-origin"
+              />
+            ) : (
+              <div className="w-full flex-1 flex items-center justify-center text-slate-500">
+                <p>Cannot preview non-HTTP URL</p>
+              </div>
+            )}
           </div>
         )}
 

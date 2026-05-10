@@ -36,8 +36,6 @@ interface SidebarProps {
   onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
   onDropBookmarks: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => void;
-  sidebarWidth: number;
-  onSidebarResizeStart: () => void;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
 }
@@ -107,6 +105,9 @@ function CollectionTreeInner(props: {
   );
 }
 
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 400;
+
 export function Sidebar({
   arboristData,
   domains,
@@ -134,15 +135,17 @@ export function Sidebar({
   onSpaceContextMenu,
   onArboristMove,
   onDropBookmarks,
-  sidebarWidth,
-  onSidebarResizeStart,
   setIsSettingsOpen,
   setIsAdding,
 }: SidebarProps) {
   const nothingSelected = !selectedCollectionId && !selectedDomain && !isViewingTrash;
   const treeRef = useRef<TreeApi<ArboristNodeData> | undefined>(undefined);
   const groupInputRef = useRef<HTMLDivElement>(null);
-
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("sidebarWidth");
+    return saved ? parseInt(saved, 10) : 256;
+  });
   useEffect(() => {
     if (!isCreatingGroup) return;
     const handleClick = (e: MouseEvent) => {
@@ -183,8 +186,9 @@ export function Sidebar({
 
   return (
     <div
+      ref={sidebarRef}
       className="bg-[#f1f3f5] flex flex-col flex-shrink-0 relative"
-      style={{ width: `${sidebarWidth}px`, minWidth: '180px', maxWidth: '400px' }}
+      style={{ width: `${sidebarWidth}px`, minWidth: `${MIN_SIDEBAR_WIDTH}px`, maxWidth: `${MAX_SIDEBAR_WIDTH}px` }}
     >
       <div className="p-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 font-semibold text-lg">
@@ -349,7 +353,36 @@ export function Sidebar({
 
       <div
         className="absolute right-0 top-0 bottom-0 w-2 mr-[-4px] cursor-col-resize z-10 group flex justify-center"
-        onMouseDown={(e) => { e.preventDefault(); onSidebarResizeStart(); }}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          const startX = e.clientX;
+          const startWidth = sidebarWidth;
+          const handleMouseMove = (moveE: MouseEvent) => {
+            const delta = moveE.clientX - startX;
+            const newWidth = Math.min(
+              MAX_SIDEBAR_WIDTH,
+              Math.max(MIN_SIDEBAR_WIDTH, startWidth + delta)
+            );
+            if (sidebarRef.current) {
+              sidebarRef.current.style.width = `${newWidth}px`;
+            }
+          };
+          const handleMouseUp = () => {
+            const computedWidth = sidebarRef.current
+              ? parseInt(sidebarRef.current.style.width || `${sidebarWidth}`, 10)
+              : sidebarWidth;
+            setSidebarWidth(computedWidth);
+            localStorage.setItem("sidebarWidth", String(computedWidth));
+            document.body.style.cursor = "";
+            document.body.classList.remove("select-none");
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+          };
+          document.addEventListener("mousemove", handleMouseMove);
+          document.addEventListener("mouseup", handleMouseUp);
+          document.body.style.cursor = "col-resize";
+          document.body.classList.add("select-none");
+        }}
       >
         <div className="h-full transition-all duration-200 w-px bg-transparent group-hover:w-1.5 group-hover:bg-blue-400" />
       </div>

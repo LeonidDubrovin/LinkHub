@@ -89,17 +89,12 @@ export default function App() {
   const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
   const [isCreatingGroup, setIsCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem("sidebarWidth");
-    return saved ? parseInt(saved, 10) : 256;
-  });
-  const [isSidebarDragging, setIsSidebarDragging] = useState(false);
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ bookmark: Bookmark; position: { x: number; y: number } } | null>(null);
 
   const queryClient = useQueryClient();
   const invalidateBookmarks = useCallback(() => {
-    queryClient.resetQueries({ queryKey: ["bookmarks"] });
-    queryClient.resetQueries({ queryKey: ["trash"] });
+    queryClient.invalidateQueries({ queryKey: ["bookmarks"] });
+    queryClient.invalidateQueries({ queryKey: ["trash"] });
   }, [queryClient]);
 
   const api = useApi(setToast);
@@ -383,7 +378,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", (insp.isDragging || isSidebarDragging) && "select-none", insp.isDragging && "cursor-col-resize", isSidebarDragging && "cursor-col-resize")}>
+      <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", insp.isDragging && "select-none cursor-col-resize")}>
         <Sidebar
           arboristData={coll.arboristData}
           domains={api.domains}
@@ -411,8 +406,7 @@ export default function App() {
           onSpaceContextMenu={coll.handleSpaceContextMenu}
           onArboristMove={coll.handleArboristMove}
           onDropBookmarks={handleDropBookmarks}
-          sidebarWidth={sidebarWidth}
-          onSidebarResizeStart={() => setIsSidebarDragging(true)}
+
           setIsSettingsOpen={setIsSettingsOpen}
           setIsAdding={bm.setIsAdding}
         />

@@ -16,13 +16,17 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
   const fetchJson = useCallback(async <T,>(url: string, setter: (data: T[]) => void) => {
     try {
       const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
       const data = await res.json();
       setter(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(`Failed to fetch ${url}`, e);
+      setToast({ message: `Failed to load data (${url})`, type: "error" });
       setter([]);
     }
-  }, []);
+  }, [setToast]);
 
   const fetchSpaces = useCallback(async () => fetchJson("/api/spaces", setSpaces), [fetchJson]);
   const fetchCollections = useCallback(async () => fetchJson("/api/collections", setCollections), [fetchJson]);

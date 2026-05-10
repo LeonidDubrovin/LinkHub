@@ -35,8 +35,17 @@ router.get("/tags", async (req, res) => {
   }
 });
 
+function sanitizeDomain(domain: string): string {
+  // Allow only valid domain characters; strip anything else to prevent path traversal
+  return domain.replace(/[^a-zA-Z0-9._-]/g, "");
+}
+
 router.get("/favicons/:domain", async (req, res) => {
-  const { domain } = req.params;
+  const rawDomain = req.params.domain;
+  const domain = sanitizeDomain(rawDomain);
+  if (!domain) {
+    return res.status(400).send("Invalid domain");
+  }
   const filePath = getFaviconPath(domain);
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {

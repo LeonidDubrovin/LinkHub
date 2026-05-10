@@ -46,7 +46,8 @@ export function useInspector() {
     if (!isDragging) {
       localStorage.setItem("inspectorWidth", inspectorWidth.toString());
     }
-  }, [isDragging, inspectorWidth]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging]); // only save when drag ends, not on every width change during drag
 
   const loadReaderView = useCallback(async (bookmark: Bookmark) => {
     setIsReaderLoading(true);

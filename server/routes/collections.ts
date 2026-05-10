@@ -16,19 +16,17 @@ router.get("/collections", (req, res) => {
   try {
     const { spaceId } = req.query;
     let query = `
-      SELECT c.*, (
-        SELECT COUNT(*) FROM bookmark_collections bc
-        JOIN bookmarks b ON b.id = bc.bookmark_id AND b.is_deleted = 0
-        WHERE bc.collection_id = c.id
-      ) as bookmarkCount
+      SELECT c.*, COUNT(b.id) as bookmarkCount
       FROM collections c
+      LEFT JOIN bookmark_collections bc ON bc.collection_id = c.id
+      LEFT JOIN bookmarks b ON b.id = bc.bookmark_id AND b.is_deleted = 0
     `;
     const params: any[] = [];
     if (spaceId) {
       query += " WHERE c.space_id = ?";
       params.push(spaceId);
     }
-    query += " ORDER BY c.sort_order ASC, c.name ASC";
+    query += " GROUP BY c.id ORDER BY c.sort_order ASC, c.name ASC";
     res.json(db.prepare(query).all(...params));
   } catch (error: any) {
     internalError(res, error);
