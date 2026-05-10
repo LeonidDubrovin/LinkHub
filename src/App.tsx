@@ -8,6 +8,8 @@ import { Sidebar } from "./components/Sidebar";
 import { BookmarkList } from "./components/BookmarkList";
 import { InspectorPanel } from "./components/InspectorPanel";
 import { CollectionContextMenu } from "./components/CollectionContextMenu";
+import { SpaceContextMenu } from "./components/SpaceContextMenu";
+import { BookmarkContextMenu } from "./components/BookmarkContextMenu";
 import { IconPicker } from "./components/IconPicker";
 import { RenameCollectionModal } from "./components/RenameCollectionModal";
 import { Bookmark } from "./types";
@@ -85,13 +87,12 @@ export default function App() {
   const [isViewingTrash, setIsViewingTrash] = useState(false);
   const [isEditingCollections, setIsEditingCollections] = useState(false);
   const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
-  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("sidebarWidth");
     return saved ? parseInt(saved, 10) : 256;
   });
   const [isSidebarDragging, setIsSidebarDragging] = useState(false);
+  const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ bookmark: Bookmark; position: { x: number; y: number } } | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -171,22 +172,6 @@ export default function App() {
     setSelectedCollectionId(null);
     setSelectedDomain(null);
   }, []);
-
-  const handleCreateGroup = useCallback(async () => {
-    if (!newGroupName.trim()) {
-      setToast({ message: "Please enter a name", type: "error" });
-      return;
-    }
-    try {
-      await apiClient.spaces.create({ name: newGroupName.trim() });
-      setNewGroupName("");
-      setIsCreatingGroup(false);
-      await api.fetchSpaces();
-      setToast({ message: "Group created", type: "success" });
-    } catch {
-      setToast({ message: "Failed to create group", type: "error" });
-    }
-  }, [newGroupName, api.fetchSpaces]);
 
   useEffect(() => {
     if (bm.selectedBookmark) {
@@ -309,6 +294,18 @@ export default function App() {
     }
   }, [bm.selectedBookmarkIds, currentBookmarks]);
 
+  const handleBookmarkContextMenu = useCallback((e: React.MouseEvent, bookmark: Bookmark) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBookmarkContextMenu({ bookmark, position: { x: e.clientX, y: e.clientY } });
+  }, []);
+
+  const handleCopyUrl = useCallback((url: string) => {
+    navigator.clipboard.writeText(url).then(() => {
+      setToast({ message: "URL copied to clipboard", type: "success" });
+    });
+  }, []);
+
   const onSelectBookmark = useCallback((bookmark: Bookmark) => {
     bm.setSelectedBookmark(bookmark);
     insp.setReaderContent(null);
@@ -335,22 +332,18 @@ export default function App() {
           selectedDomain={selectedDomain}
           isViewingTrash={isViewingTrash}
           isCreatingCollection={coll.isCreatingCollection}
-          isCreatingGroup={isCreatingGroup}
           newCollectionName={coll.newCollectionName}
-          newGroupName={newGroupName}
           setIsCreatingCollection={coll.setIsCreatingCollection}
           setNewCollectionName={coll.setNewCollectionName}
           handleCreateCollection={coll.handleCreateCollection}
           createCollectionSpaceId={coll.createCollectionSpaceId}
           setCreateCollectionSpaceId={coll.setCreateCollectionSpaceId}
-          setIsCreatingGroup={setIsCreatingGroup}
-          setNewGroupName={setNewGroupName}
-          handleCreateGroup={handleCreateGroup}
           onSelectCollection={handleSelectCollection}
           onSelectDomain={handleSelectDomain}
           onSelectTrash={handleSelectTrash}
           togglePinDomain={ui.togglePinDomain}
           onCollectionContextMenu={coll.handleContextMenu}
+          onSpaceContextMenu={coll.handleSpaceContextMenu}
           onArboristMove={coll.handleArboristMove}
           onDropBookmarks={coll.handleDropBookmarks}
           sidebarWidth={sidebarWidth}
@@ -389,6 +382,7 @@ export default function App() {
           onLoadMore={currentFetchNextPage}
           hasNextPage={currentHasNextPage}
           isFetchingNextPage={currentIsFetchingNextPage}
+          onBookmarkContextMenu={handleBookmarkContextMenu}
         />
 
         <InspectorPanel
@@ -485,6 +479,43 @@ export default function App() {
           currentIcon={coll.iconPickerCollection.icon || "Folder"}
           onSelect={coll.handleChangeIconSubmit}
           onClose={() => coll.setIconPickerCollection(null)}
+        />
+      )}
+
+      {coll.spaceContextMenu && (
+        <SpaceContextMenu
+          space={coll.spaceContextMenu.space}
+          position={coll.spaceContextMenu.position}
+          onClose={() => coll.setSpaceContextMenu(null)}
+          onRename={(space) => coll.setRenamingSpace(space)}
+          onDelete={coll.handleDeleteSpace}
+          onAddCollection={(spaceId) => {
+            coll.setCreateCollectionSpaceId(spaceId);
+            coll.setIsCreatingCollection(true);
+            coll.setNewCollectionName("");
+          }}
+        />
+      )}
+
+      {coll.renamingSpace && (
+        <RenameCollectionModal
+          currentName={coll.renamingSpace.name}
+          onSubmit={(name) => {
+            coll.handleRenameSpace(name);
+          }}
+          onClose={() => coll.setRenamingSpace(null)}
+        />
+      )}
+
+      {bookmarkContextMenu && (
+        <BookmarkContextMenu
+          bookmark={bookmarkContextMenu.bookmark}
+          position={bookmarkContextMenu.position}
+          onClose={() => setBookmarkContextMenu(null)}
+          onOpen={(url) => window.open(url, "_blank")}
+          onCopyUrl={handleCopyUrl}
+          onRefresh={handleRefreshBookmark}
+          onDelete={handleDeleteBookmark}
         />
       )}
     </>

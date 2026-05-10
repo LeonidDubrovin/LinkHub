@@ -38,6 +38,7 @@ interface BookmarkListProps {
   onLoadMore?: () => void;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
+  onBookmarkContextMenu?: (e: React.MouseEvent, bookmark: Bookmark) => void;
 }
 
 function SkeletonCard({ viewMode, itemSize }: { viewMode: "list" | "grid"; itemSize: "small" | "medium" | "large" }) {
@@ -100,6 +101,7 @@ export function BookmarkList({
   onLoadMore,
   hasNextPage,
   isFetchingNextPage,
+  onBookmarkContextMenu,
 }: BookmarkListProps) {
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -304,6 +306,7 @@ export function BookmarkList({
                   e.dataTransfer.setData(BOOKMARK_DRAG_TYPE, JSON.stringify(ids));
                   e.dataTransfer.effectAllowed = "copy";
                 }}
+                onContextMenu={onBookmarkContextMenu}
               />
             ))}
             {isFetchingNextPage && Array.from({ length: 3 }).map((_, i) => (

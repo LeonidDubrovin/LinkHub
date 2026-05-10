@@ -11,6 +11,7 @@ export const BOOKMARK_DRAG_TYPE = "application/linkhub-bookmark";
 interface ArboristNodeProps extends NodeRendererProps<ArboristNodeData> {
   onSelectCollection: (id: string) => void;
   onContextMenu: (e: React.MouseEvent, coll: Collection) => void;
+  onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onCreateCollection: (spaceId: string) => void;
   onDropBookmarks?: (collectionId: string, bookmarkIds: string[]) => void;
 }
@@ -21,6 +22,7 @@ export const ArboristNode = React.memo(function ArboristNode({
   dragHandle,
   onSelectCollection,
   onContextMenu,
+  onSpaceContextMenu,
   onCreateCollection,
   onDropBookmarks,
 }: ArboristNodeProps) {
@@ -57,8 +59,19 @@ export const ArboristNode = React.memo(function ArboristNode({
 
   if (data.isGroup) {
     const groupStyle = { ...style, paddingLeft: (style.paddingLeft as number || 0) + 8 };
+    const space = {
+      id: data.space_id,
+      name: data.name,
+      icon: data.icon,
+      color: data.color,
+      created_at: "",
+    };
     return (
-      <div style={groupStyle} className="flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mt-2 mb-px select-none bg-slate-100 font-semibold text-slate-700 hover:bg-slate-200">
+      <div
+        style={groupStyle}
+        className="flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mt-3 mb-px select-none bg-slate-100 font-semibold text-slate-700 border border-slate-200"
+        onContextMenu={(e) => onSpaceContextMenu(e, space)}
+      >
         <span
           onClick={(e) => { e.stopPropagation(); node.toggle(); }}
           className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
@@ -68,19 +81,9 @@ export const ArboristNode = React.memo(function ArboristNode({
             className={cn("transition-transform duration-150", node.isOpen && "rotate-90")}
           />
         </span>
-          <span className="truncate flex-1">
-            {data.name}
-          </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onCreateCollection(data.space_id);
-          }}
-          className="w-4 h-4 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0"
-          title="New collection"
-        >
-          <Plus size={14} />
-        </button>
+        <span className="truncate flex-1">
+          {data.name}
+        </span>
       </div>
     );
   }

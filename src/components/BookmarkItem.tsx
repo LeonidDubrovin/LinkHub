@@ -15,6 +15,7 @@ interface BookmarkItemProps {
   onSelect: (bookmark: Bookmark) => void;
   onToggleSelection: (id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
+  onContextMenu?: (e: React.MouseEvent, bookmark: Bookmark) => void;
 }
 
 function BookmarkItemInner({
@@ -27,6 +28,7 @@ function BookmarkItemInner({
   onSelect,
   onToggleSelection,
   onDragStart,
+  onContextMenu,
 }: BookmarkItemProps) {
   const handleClick = useCallback(() => {
     onSelect(bookmark);
@@ -47,6 +49,7 @@ function BookmarkItemInner({
       draggable
       onDragStart={handleDragStartCb}
       onClick={handleClick}
+      onContextMenu={(e) => onContextMenu?.(e, bookmark)}
       className={cn(
         "group cursor-pointer border rounded-lg overflow-hidden transition-all hover:shadow-md bg-white relative",
         viewMode === "list"

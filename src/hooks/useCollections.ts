@@ -14,7 +14,9 @@ export function useCollections(
   onCollectionDeleted?: (collectionId: string) => void
 ) {
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; position: { x: number; y: number } } | null>(null);
+  const [spaceContextMenu, setSpaceContextMenu] = useState<{ space: import("../types").Space; position: { x: number; y: number } } | null>(null);
   const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null);
+  const [renamingSpace, setRenamingSpace] = useState<import("../types").Space | null>(null);
   const [iconPickerCollection, setIconPickerCollection] = useState<Collection | null>(null);
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
@@ -348,6 +350,46 @@ export function useCollections(
     []
   );
 
+  const handleSpaceContextMenu = useCallback(
+    (e: React.MouseEvent, space: import("../types").Space) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSpaceContextMenu({ space, position: { x: e.clientX, y: e.clientY } });
+    },
+    []
+  );
+
+  const handleRenameSpace = useCallback(
+    async (newName: string) => {
+      if (!renamingSpace) return;
+      try {
+        await apiClient.spaces.update(renamingSpace.id, { name: newName });
+        await fetchCollections(); // refresh spaces indirectly via parent
+        setToast({ message: "Group renamed", type: "success" });
+      } catch (error) {
+        const msg = error instanceof ApiError ? error.message : "Failed to rename group";
+        setToast({ message: msg, type: "error" });
+      }
+      setRenamingSpace(null);
+    },
+    [renamingSpace, setToast]
+  );
+
+  const handleDeleteSpace = useCallback(
+    async (spaceId: string) => {
+      if (!confirm("Delete this group? All collections inside will also be removed. Bookmarks will remain but will be unlinked from those collections.")) return;
+      try {
+        await apiClient.spaces.delete(spaceId);
+        await fetchCollections();
+        setToast({ message: "Group deleted", type: "success" });
+      } catch (error) {
+        const msg = error instanceof ApiError ? error.message : "Failed to delete group";
+        setToast({ message: msg, type: "error" });
+      }
+    },
+    [fetchCollections, setToast]
+  );
+
   const handleRenameSubmit = useCallback(
     (newName: string) => {
       if (!renamingCollection) return;
@@ -391,8 +433,12 @@ export function useCollections(
   return {
     contextMenu,
     setContextMenu,
+    spaceContextMenu,
+    setSpaceContextMenu,
     renamingCollection,
     setRenamingCollection,
+    renamingSpace,
+    setRenamingSpace,
     iconPickerCollection,
     setIconPickerCollection,
     isCreatingCollection,
@@ -414,6 +460,9 @@ export function useCollections(
     handleMoveCollectionDown,
     handleMoveCollectionOut,
     handleContextMenu,
+    handleSpaceContextMenu,
+    handleRenameSpace,
+    handleDeleteSpace,
     handleRenameSubmit,
     handleChangeIconSubmit,
     handleDropBookmarks,

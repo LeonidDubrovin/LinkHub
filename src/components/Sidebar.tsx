@@ -17,22 +17,18 @@ interface SidebarProps {
   selectedDomain: string | null;
   isViewingTrash: boolean;
   isCreatingCollection: boolean;
-  isCreatingGroup: boolean;
   newCollectionName: string;
-  newGroupName: string;
   createCollectionSpaceId: string | null;
   setIsCreatingCollection: (v: boolean) => void;
   setNewCollectionName: (v: string) => void;
   handleCreateCollection: () => void;
   setCreateCollectionSpaceId: (id: string | null) => void;
-  setIsCreatingGroup: (v: boolean) => void;
-  setNewGroupName: (v: string) => void;
-  handleCreateGroup: () => void;
   onSelectCollection: (id: string | null) => void;
   onSelectDomain: (domain: string | null) => void;
   onSelectTrash: () => void;
   togglePinDomain: (domain: string, e: React.MouseEvent) => void;
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
+  onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
   onDropBookmarks: (collectionId: string, bookmarkIds: string[]) => void;
   sidebarWidth: number;
@@ -59,6 +55,7 @@ function CollectionTreeInner(props: {
   sidebarWidth: number;
   onSelectCollection: (id: string | null) => void;
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
+  onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
   handleCreateCollectionForSpace: (spaceId: string) => void;
   onDropBookmarks: (collectionId: string, bookmarkIds: string[]) => void;
@@ -96,6 +93,7 @@ function CollectionTreeInner(props: {
           {...nodeProps}
           onSelectCollection={(id) => props.onSelectCollection(id)}
           onContextMenu={props.onCollectionContextMenu}
+          onSpaceContextMenu={props.onSpaceContextMenu}
           onCreateCollection={props.handleCreateCollectionForSpace}
           onDropBookmarks={props.onDropBookmarks}
         />
@@ -112,22 +110,18 @@ export function Sidebar({
   selectedDomain,
   isViewingTrash,
   isCreatingCollection,
-  isCreatingGroup,
   newCollectionName,
-  newGroupName,
   createCollectionSpaceId,
   setIsCreatingCollection,
   setNewCollectionName,
   handleCreateCollection,
   setCreateCollectionSpaceId,
-  setIsCreatingGroup,
-  setNewGroupName,
-  handleCreateGroup,
   onSelectCollection,
   onSelectDomain,
   onSelectTrash,
   togglePinDomain,
   onCollectionContextMenu,
+  onSpaceContextMenu,
   onArboristMove,
   onDropBookmarks,
   sidebarWidth,
@@ -223,37 +217,6 @@ export function Sidebar({
         </div>
 
         <div className="px-3 mb-1">
-          <div className="flex items-center justify-between px-2 mb-1">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Groups
-            </div>
-            <button
-              onClick={() => setIsCreatingGroup(true)}
-              className="text-[10px] text-slate-400 hover:text-blue-500 transition-colors"
-              title="New group"
-            >
-              + Group
-            </button>
-          </div>
-          {isCreatingGroup && (
-            <div className="mb-2 px-2">
-              <input
-                autoFocus
-                type="text"
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                placeholder="Group name"
-                className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateGroup();
-                  else if (e.key === "Escape") { setIsCreatingGroup(false); setNewGroupName(""); }
-                }}
-              />
-            </div>
-          )}
-        </div>
-
-        <div className="px-3 mb-1">
           <DndProvider backend={TouchBackend} options={{ enableMouseEvents: true, delayTouchStart: 0, delayMouseStart: 0 }}>
             <CollectionTreeInner
               arboristData={arboristData}
@@ -262,6 +225,7 @@ export function Sidebar({
               sidebarWidth={sidebarWidth}
               onSelectCollection={onSelectCollection}
               onCollectionContextMenu={onCollectionContextMenu}
+              onSpaceContextMenu={onSpaceContextMenu}
               onArboristMove={onArboristMove}
               handleCreateCollectionForSpace={handleCreateCollectionForSpace}
               onDropBookmarks={onDropBookmarks}
