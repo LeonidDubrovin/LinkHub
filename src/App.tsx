@@ -87,6 +87,8 @@ export default function App() {
   const [isViewingTrash, setIsViewingTrash] = useState(false);
   const [isEditingCollections, setIsEditingCollections] = useState(false);
   const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("sidebarWidth");
     return saved ? parseInt(saved, 10) : 256;
@@ -156,6 +158,22 @@ export default function App() {
     insp.setIsInspectorOpen(false);
     insp.setReaderContent(null);
   }, [selectedCollectionId, selectedDomain, isViewingTrash, debouncedSearchQuery, ui.sortBy, ui.filterBy]);
+
+  const handleCreateGroup = useCallback(async () => {
+    if (!newGroupName.trim()) {
+      setToast({ message: "Please enter a name", type: "error" });
+      return;
+    }
+    try {
+      await apiClient.spaces.create({ name: newGroupName.trim() });
+      setNewGroupName("");
+      setIsCreatingGroup(false);
+      await api.fetchSpaces();
+      setToast({ message: "Group created", type: "success" });
+    } catch {
+      setToast({ message: "Failed to create group", type: "error" });
+    }
+  }, [newGroupName, api.fetchSpaces]);
 
   const handleSelectCollection = useCallback((id: string | null) => {
     setSelectedCollectionId(id);
@@ -332,12 +350,17 @@ export default function App() {
           selectedDomain={selectedDomain}
           isViewingTrash={isViewingTrash}
           isCreatingCollection={coll.isCreatingCollection}
+          isCreatingGroup={isCreatingGroup}
           newCollectionName={coll.newCollectionName}
+          newGroupName={newGroupName}
           setIsCreatingCollection={coll.setIsCreatingCollection}
           setNewCollectionName={coll.setNewCollectionName}
           handleCreateCollection={coll.handleCreateCollection}
           createCollectionSpaceId={coll.createCollectionSpaceId}
           setCreateCollectionSpaceId={coll.setCreateCollectionSpaceId}
+          setIsCreatingGroup={setIsCreatingGroup}
+          setNewGroupName={setNewGroupName}
+          handleCreateGroup={handleCreateGroup}
           onSelectCollection={handleSelectCollection}
           onSelectDomain={handleSelectDomain}
           onSelectTrash={handleSelectTrash}

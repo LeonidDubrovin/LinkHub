@@ -30,10 +30,11 @@ export const ArboristNode = React.memo(function ArboristNode({
   const [isBookmarkOver, setIsBookmarkOver] = useState(false);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes(BOOKMARK_DRAG_TYPE)) {
+    const types = Array.from(e.dataTransfer.types);
+    if (types.includes(BOOKMARK_DRAG_TYPE)) {
       e.preventDefault();
       e.stopPropagation();
-      e.dataTransfer.dropEffect = "copy";
+      e.dataTransfer.dropEffect = "move";
       setIsBookmarkOver(true);
     }
   }, []);

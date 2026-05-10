@@ -17,12 +17,17 @@ interface SidebarProps {
   selectedDomain: string | null;
   isViewingTrash: boolean;
   isCreatingCollection: boolean;
+  isCreatingGroup: boolean;
   newCollectionName: string;
+  newGroupName: string;
   createCollectionSpaceId: string | null;
   setIsCreatingCollection: (v: boolean) => void;
   setNewCollectionName: (v: string) => void;
   handleCreateCollection: () => void;
   setCreateCollectionSpaceId: (id: string | null) => void;
+  setIsCreatingGroup: (v: boolean) => void;
+  setNewGroupName: (v: string) => void;
+  handleCreateGroup: () => void;
   onSelectCollection: (id: string | null) => void;
   onSelectDomain: (domain: string | null) => void;
   onSelectTrash: () => void;
@@ -113,9 +118,14 @@ export function Sidebar({
   newCollectionName,
   createCollectionSpaceId,
   setIsCreatingCollection,
+  isCreatingGroup,
   setNewCollectionName,
+  newGroupName,
   handleCreateCollection,
   setCreateCollectionSpaceId,
+  setIsCreatingGroup,
+  setNewGroupName,
+  handleCreateGroup,
   onSelectCollection,
   onSelectDomain,
   onSelectTrash,
@@ -214,6 +224,37 @@ export function Sidebar({
             <Trash2 size={16} className={isViewingTrash ? "text-blue-600" : "text-slate-400"} />
             Trash
           </button>
+        </div>
+
+        <div className="px-3 mb-1">
+          <div className="flex items-center justify-between px-2 mb-1">
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Groups
+            </div>
+            <button
+              onClick={() => setIsCreatingGroup(true)}
+              className="text-[10px] text-slate-400 hover:text-blue-500 transition-colors"
+              title="New group"
+            >
+              + Group
+            </button>
+          </div>
+          {isCreatingGroup && (
+            <div className="mb-2 px-2">
+              <input
+                autoFocus
+                type="text"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="Group name"
+                className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateGroup();
+                  else if (e.key === "Escape") { setIsCreatingGroup(false); setNewGroupName(""); }
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="px-3 mb-1">
