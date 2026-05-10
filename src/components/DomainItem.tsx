@@ -24,7 +24,7 @@ export function DomainItem({
     <button
       onClick={() => onSelect(domain)}
       className={cn(
-        "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm mb-0.5 group select-none",
+        "w-full flex items-center gap-3 px-2 py-1.5 pr-3 rounded-md text-sm mb-0.5 group select-none",
         isSelected
           ? "bg-blue-100 text-blue-700 font-medium"
           : "hover:bg-slate-200 text-slate-700",

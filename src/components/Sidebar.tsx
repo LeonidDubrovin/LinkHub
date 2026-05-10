@@ -84,7 +84,7 @@ function CollectionTreeInner(props: {
       disableDrop={({ parentNode }: { parentNode: any; dragNodes: any[]; index: number }) => !parentNode}
       disableEdit={true}
       dndManager={dndManager}
-      width={props.sidebarWidth - 36}
+      width={props.sidebarWidth - 48}
       height={props.treeHeight}
       indent={12}
       rowHeight={32}
@@ -194,7 +194,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>
         <div className="px-3 mb-3">
           <button
             onClick={() => { onSelectCollection(null); onSelectDomain(null); }}

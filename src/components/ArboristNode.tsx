@@ -56,31 +56,30 @@ export const ArboristNode = React.memo(function ArboristNode({
   }, [onDropBookmarks, data.id, data.isGroup]);
 
   if (data.isGroup) {
+    const groupStyle = { ...style, paddingLeft: (style.paddingLeft as number || 0) + 8 };
     return (
-      <div style={style} className="flex items-center justify-between px-3 py-1">
-        <div className="flex items-center gap-1 min-w-0">
-          <span
-            onClick={(e) => { e.stopPropagation(); node.toggle(); }}
-            className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
-          >
-            <ChevronRight
-              size={14}
-              className={cn("transition-transform duration-150", node.isOpen && "rotate-90")}
-            />
-          </span>
-          <span className="text-xs font-semibold uppercase text-slate-500 tracking-wide truncate">
+      <div style={groupStyle} className="flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mb-px select-none hover:bg-slate-100 text-slate-700">
+        <span
+          onClick={(e) => { e.stopPropagation(); node.toggle(); }}
+          className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
+        >
+          <ChevronRight
+            size={14}
+            className={cn("transition-transform duration-150", node.isOpen && "rotate-90")}
+          />
+        </span>
+          <span className="truncate flex-1">
             {data.name}
           </span>
-        </div>
         <button
           onClick={(e) => {
             e.stopPropagation();
             onCreateCollection(data.space_id);
           }}
-          className="text-xs text-slate-400 hover:text-blue-600 transition-colors flex items-center gap-0.5 flex-shrink-0"
+          className="w-4 h-4 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors flex-shrink-0"
           title="New collection"
         >
-          <Plus size={12} /> Collection
+          <Plus size={14} />
         </button>
       </div>
     );
@@ -108,12 +107,14 @@ export const ArboristNode = React.memo(function ArboristNode({
     bookmarkCount: data.bookmarkCount,
   };
 
+  const nodeStyle = { ...style, paddingLeft: (style.paddingLeft as number || 0) + 8 };
+
   return (
     <div
       ref={dragHandle}
-      style={style}
+      style={nodeStyle}
       className={cn(
-        "flex items-center gap-2 py-1.5 rounded-md text-sm mb-px select-none cursor-pointer",
+        "flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mb-px select-none cursor-pointer",
         isDragging && "opacity-40",
         isBookmarkOver && "bg-blue-50 ring-2 ring-green-400 ring-offset-[-1px]",
         !isBookmarkOver && isSelected

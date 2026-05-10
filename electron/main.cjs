@@ -125,6 +125,7 @@ async function createWindow() {
   });
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    if (errorCode === -3) return; // ERR_ABORTED — normal on HMR reload, refresh, or close
     console.error('Failed to load:', errorCode, errorDescription);
     if (mainWindow) {
       mainWindow.loadURL(`data:text/html;charset=utf-8,
