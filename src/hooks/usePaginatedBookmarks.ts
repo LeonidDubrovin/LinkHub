@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Bookmark } from "../types";
 import { apiClient, PaginatedBookmarksResponse } from "../services/api";
 

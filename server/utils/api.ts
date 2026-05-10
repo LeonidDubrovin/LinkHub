@@ -35,10 +35,9 @@ export function internalError(res: express.Response, error: any) {
 
 export function getBookmarkWithRelations(id: string) {
   const bookmark = db.prepare(`
-    SELECT b.*, c.name as category_name, c.color as category_color 
+    SELECT b.* 
     FROM bookmarks b 
-    LEFT JOIN categories c ON b.category_id = c.id 
-    WHERE b.id = ? AND b.is_deleted = 0
+    WHERE b.id = ?
   `).get(id) as any;
 
   if (!bookmark) return null;
@@ -107,22 +106,12 @@ export function getBookmarksWithRelations(
 }
 
 export function softDeleteBookmark(id: string) {
-  db.transaction(() => {
-    db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
-    db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
-    db.prepare("UPDATE bookmarks SET is_deleted = 1 WHERE id = ?").run(id);
-    db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)").run();
-  })();
+  db.prepare("UPDATE bookmarks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
 }
 
 export function bulkSoftDeleteBookmarks(ids: string[]) {
-  db.transaction(() => {
-    const placeholders = ids.map(() => '?').join(',');
-    db.prepare(`DELETE FROM bookmark_collections WHERE bookmark_id IN (${placeholders})`).run(...ids);
-    db.prepare(`DELETE FROM bookmark_tags WHERE bookmark_id IN (${placeholders})`).run(...ids);
-    db.prepare(`UPDATE bookmarks SET is_deleted = 1 WHERE id IN (${placeholders})`).run(...ids);
-    db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)").run();
-  })();
+  const placeholders = ids.map(() => '?').join(',');
+  db.prepare(`UPDATE bookmarks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`).run(...ids);
 }
 
 export function validateCollectionIds(collectionIds: string[]): boolean {
@@ -144,7 +133,7 @@ export function buildPaginatedBookmarksQuery(
   offset: number
 ): { dataQuery: string; countQuery: string; params: any[]; countParams: any[] } {
   const ctes: string[] = [];
-  let baseFrom = `FROM bookmarks b LEFT JOIN categories c ON b.category_id = c.id`;
+  let baseFrom = `FROM bookmarks b`;
   let where = `WHERE b.is_deleted = 0`;
   const params: any[] = [];
 
@@ -200,7 +189,7 @@ export function buildPaginatedBookmarksQuery(
   }
 
   const ctePrefix = ctes.length > 0 ? `WITH RECURSIVE ${ctes.join(", ")} ` : "";
-  const dataQuery = `${ctePrefix}SELECT b.*, c.name as category_name, c.color as category_color ${baseFrom} ${where}${orderBy} LIMIT ? OFFSET ?`;
+  const dataQuery = `${ctePrefix}SELECT b.* ${baseFrom} ${where}${orderBy} LIMIT ? OFFSET ?`;
   const countQuery = `${ctePrefix}SELECT COUNT(*) as total ${baseFrom} ${where}`;
 
   const countParams = [...params];

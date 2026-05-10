@@ -5,22 +5,35 @@ import { Bookmark } from '../types';
 interface BookmarkContextMenuProps {
   bookmark: Bookmark;
   position: { x: number; y: number };
+  currentCollectionId?: string | null;
+  isTrash?: boolean;
   onClose: () => void;
   onOpen: (url: string) => void;
   onCopyUrl: (url: string) => void;
   onRefresh: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (bookmark: Bookmark, currentCollectionId?: string | null) => void;
+  onRemoveFromCollection?: (bookmark: Bookmark, collectionId: string) => void;
+  onMoveToTrash?: (id: string) => void;
+  onRestore?: (id: string) => void;
+  onPermanentlyDelete?: (id: string) => void;
 }
 
 export function BookmarkContextMenu({
   bookmark,
   position,
+  currentCollectionId,
+  isTrash,
   onClose,
   onOpen,
   onCopyUrl,
   onRefresh,
   onDelete,
+  onRemoveFromCollection,
+  onMoveToTrash,
+  onRestore,
+  onPermanentlyDelete,
 }: BookmarkContextMenuProps) {
+  const isInCurrentCollection = !isTrash && currentCollectionId && bookmark.collections.some((c) => c.id === currentCollectionId);
   const menuRef = useRef<HTMLDivElement>(null);
   const [adjustedPos, setAdjustedPos] = useState(position);
 
@@ -83,13 +96,48 @@ export function BookmarkContextMenu({
 
       <div className="border-t border-slate-100 my-1" />
 
-      <button
-        onClick={() => { onClose(); onDelete(bookmark.id); }}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
-      >
-        <Trash2 size={14} />
-        Delete
-      </button>
+      {isTrash ? (
+        <>
+          {onRestore && (
+            <button
+              onClick={() => { onClose(); onRestore(bookmark.id); }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <RefreshCw size={14} />
+              Restore
+            </button>
+          )}
+          {onPermanentlyDelete && (
+            <button
+              onClick={() => { onClose(); onPermanentlyDelete(bookmark.id); }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={14} />
+              Delete permanently
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          {isInCurrentCollection && onRemoveFromCollection && (
+            <button
+              onClick={() => { onClose(); onRemoveFromCollection(bookmark, currentCollectionId); }}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <Link2 size={14} />
+              Remove from collection
+            </button>
+          )}
+
+          <button
+            onClick={() => { onClose(); onDelete(bookmark, currentCollectionId); }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 size={14} />
+            {isInCurrentCollection ? "Move to trash" : "Delete"}
+          </button>
+        </>
+      )}
     </div>
   );
 }

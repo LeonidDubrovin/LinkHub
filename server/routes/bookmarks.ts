@@ -27,8 +27,21 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
   try { new URL(url); } catch (e) {
     return { id: null, title: url, success: false, error: "Invalid URL format" };
   }
-  const existing = db.prepare("SELECT id, title FROM bookmarks WHERE url = ? AND is_deleted = 0").get(url) as any;
-  if (existing) return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
+  // Check for existing bookmark by URL (any state: active or trashed)
+  const existing = db.prepare("SELECT id, title, is_deleted FROM bookmarks WHERE url = ?").get(url) as any;
+  if (existing) {
+    if (existing.is_deleted === 1) {
+      // Restore trashed bookmark and add to requested collections
+      const collectionIds = options.collectionIds && options.collectionIds.length > 0 ? options.collectionIds : ['inbox-collection'];
+      db.transaction(() => {
+        db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(existing.id);
+        const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+        for (const colId of collectionIds) insertLink.run(existing.id, colId);
+      })();
+      return { id: existing.id, title: existing.title, success: true, exists: true, restored: true, error: "Bookmark restored from trash" };
+    }
+    return { id: existing.id, title: existing.title, success: false, exists: true, error: "Bookmark already exists" };
+  }
 
   let collectionIds = options.collectionIds && options.collectionIds.length > 0 ? options.collectionIds : ['inbox-collection'];
   if (collectionIds.length > 0) {
@@ -43,7 +56,6 @@ async function createBookmark(url: string, options: { collectionIds?: string[] }
 
   db.transaction(() => {
     db.prepare("INSERT INTO bookmarks (id, url, title, domain) VALUES (?, ?, ?, ?)").run(bookmarkId, url, url, domain);
-    db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0] || null, bookmarkId);
     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
     for (const colId of collectionIds) insertLink.run(bookmarkId, colId);
   })();
@@ -156,12 +168,11 @@ router.post("/bookmarks/:id/refresh", async (req, res) => {
     const finalCoverImageUrl = data.cover_image_url || bookmark.cover_image_url;
     const finalContentText = data.content_text || bookmark.content_text;
     const finalDomain = data.domain || bookmark.domain;
-    const finalCategoryId = bookmark.category_id || data.category_id;
     let finalImagesJson = data.images_json;
     if ((!data.images_json || data.images_json === "[]") && bookmark.images_json) finalImagesJson = bookmark.images_json;
 
-    db.prepare(`UPDATE bookmarks SET title = ?, description = ?, cover_image_url = ?, content_text = ?, category_id = ?, domain = ?, images_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
-      finalTitle, finalDescription, finalCoverImageUrl, finalContentText, finalCategoryId, finalDomain, finalImagesJson, id
+    db.prepare(`UPDATE bookmarks SET title = ?, description = ?, cover_image_url = ?, content_text = ?, domain = ?, images_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(
+      finalTitle, finalDescription, finalCoverImageUrl, finalContentText, finalDomain, finalImagesJson, id
     );
 
     for (const tagName of data.suggestedTags) {
@@ -226,26 +237,40 @@ router.get("/trash", (req, res) => {
       case "domain_desc": orderBy = " ORDER BY b.domain DESC"; break;
     }
 
-    const dataQuery = `SELECT b.*, c.name as category_name, c.color as category_color FROM bookmarks b LEFT JOIN categories c ON b.category_id = c.id ${where}${orderBy} LIMIT ? OFFSET ?`;
-    const countQuery = `SELECT COUNT(*) as total FROM bookmarks b LEFT JOIN categories c ON b.category_id = c.id ${where}`;
+    const dataQuery = `SELECT b.* FROM bookmarks b ${where}${orderBy} LIMIT ? OFFSET ?`;
+    const countQuery = `SELECT COUNT(*) as total FROM bookmarks b ${where}`;
 
     const bookmarks = db.prepare(dataQuery).all(...params, limitNum, offset) as any[];
     const countResult = db.prepare(countQuery).get(...params) as { total: number };
     const bookmarkIds = bookmarks.map(b => b.id);
 
+    let tagsByBookmarkId: Record<string, any[]> = {};
     let collectionsByBookmarkId: Record<string, any[]> = {};
     if (bookmarkIds.length > 0) {
       const chunkSize = 500;
+      const allTags: any[] = [];
       const allCollections: any[] = [];
       for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
         const chunk = bookmarkIds.slice(i, i + chunkSize);
         const placeholders = chunk.map(() => '?').join(',');
+        allTags.push(...db.prepare(`
+          SELECT bt.bookmark_id, t.* FROM tags t
+          JOIN bookmark_tags bt ON t.id = bt.tag_id
+          WHERE bt.bookmark_id IN (${placeholders})
+        `).all(...chunk) as any[]);
         allCollections.push(...db.prepare(`
           SELECT bc.bookmark_id, col.* FROM bookmark_collections bc
           JOIN collections col ON bc.collection_id = col.id
           WHERE bc.bookmark_id IN (${placeholders})
         `).all(...chunk) as any[]);
       }
+
+      tagsByBookmarkId = allTags.reduce((acc: any, row: any) => {
+        if (!acc[row.bookmark_id]) acc[row.bookmark_id] = [];
+        const { bookmark_id, ...tag } = row;
+        acc[row.bookmark_id].push(tag);
+        return acc;
+      }, {} as Record<string, any[]>);
 
       collectionsByBookmarkId = allCollections.reduce((acc: any, row: any) => {
         if (!acc[row.bookmark_id]) acc[row.bookmark_id] = [];
@@ -258,7 +283,7 @@ router.get("/trash", (req, res) => {
     res.json({
       data: bookmarks.map(b => ({
         ...b,
-        tags: [],
+        tags: tagsByBookmarkId[b.id] || [],
         collections: collectionsByBookmarkId[b.id] || []
       })),
       total: countResult?.total ?? 0,
@@ -273,10 +298,23 @@ router.get("/trash", (req, res) => {
 router.post("/trash/:id/restore", (req, res) => {
   try {
     const { id } = req.params;
-    const result = db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
-    if (result.changes === 0) return notFound(res, "Bookmark not found");
-    const bookmark = getBookmarkWithRelations(id);
-    sendJson(res, bookmark);
+    const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(id) as any;
+    if (!bookmark) return notFound(res, "Bookmark not found");
+
+    // Restore if still in trash
+    if (bookmark.is_deleted === 1) {
+      db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+    }
+
+    // For backwards compatibility: if restored bookmark has no collections (old soft-delete removed links),
+    // add it to the Unsorted inbox collection.
+    const hasCollections = db.prepare("SELECT 1 FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1").get(id) as any;
+    if (!hasCollections) {
+      db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, 'inbox-collection');
+    }
+
+    const restored = getBookmarkWithRelations(id);
+    sendJson(res, restored);
   } catch (error: any) {
     internalError(res, error);
   }
@@ -285,9 +323,12 @@ router.post("/trash/:id/restore", (req, res) => {
 router.delete("/trash/:id", (req, res) => {
   try {
     const { id } = req.params;
-    db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
-    db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
-    db.prepare("DELETE FROM bookmarks WHERE id = ? AND is_deleted = 1").run(id);
+    db.transaction(() => {
+      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
+      db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
+      db.prepare("DELETE FROM bookmarks WHERE id = ? AND is_deleted = 1").run(id);
+      db.prepare("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM bookmark_tags)").run();
+    })();
     sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);

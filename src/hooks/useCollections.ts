@@ -339,19 +339,23 @@ export function useCollections(
   );
 
   const handleDropBookmarks = useCallback(
-    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => {
+    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null, fetchBookmarksFn?: () => Promise<void>) => {
       try {
-        // If dragged from a specific collection, remove from source first (move)
-        if (sourceCollectionId) {
+        // IMPORTANT: Add to target FIRST, then remove from source.
+        // If we remove first, the orphaned-bookmark fallback on the server
+        // would temporarily add the bookmark to inbox-collection before
+        // the target add happens, resulting in an unwanted extra collection.
+        const result = await apiClient.collections.addBookmarksToCollection(collectionId, bookmarkIds);
+        if (sourceCollectionId && result.success) {
           await Promise.all(
             bookmarkIds.map((id) =>
               apiClient.collections.removeFromBookmark(id, sourceCollectionId)
             )
           );
         }
-        const result = await apiClient.collections.addBookmarksToCollection(collectionId, bookmarkIds);
         if (result.success) {
           await fetchCollections();
+          await fetchBookmarksFn?.();
           setToast({ message: `${bookmarkIds.length} bookmark${bookmarkIds.length > 1 ? "s" : ""} moved to collection`, type: "success" });
         }
       } catch (error) {

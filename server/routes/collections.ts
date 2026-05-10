@@ -16,7 +16,11 @@ router.get("/collections", (req, res) => {
   try {
     const { spaceId } = req.query;
     let query = `
-      SELECT c.*, (SELECT COUNT(*) FROM bookmark_collections bc WHERE bc.collection_id = c.id) as bookmarkCount
+      SELECT c.*, (
+        SELECT COUNT(*) FROM bookmark_collections bc
+        JOIN bookmarks b ON b.id = bc.bookmark_id AND b.is_deleted = 0
+        WHERE bc.collection_id = c.id
+      ) as bookmarkCount
       FROM collections c
     `;
     const params: any[] = [];
@@ -84,12 +88,25 @@ router.delete("/collections/:id", (req, res) => {
   try {
     const { id } = req.params;
     if (id === 'inbox-collection') return sendError(res, "Cannot delete system Inbox collection", 403);
-    db.prepare("UPDATE collections SET parent_id = NULL WHERE parent_id = ?").run(id);
-    db.prepare("DELETE FROM bookmark_collections WHERE collection_id = ?").run(id);
-    const result = db.prepare("DELETE FROM collections WHERE id = ?").run(id);
-    if (result.changes === 0) return notFound(res, "Collection not found");
+    db.transaction(() => {
+      db.prepare("UPDATE collections SET parent_id = NULL WHERE parent_id = ?").run(id);
+      db.prepare("DELETE FROM bookmark_collections WHERE collection_id = ?").run(id);
+      // Move orphaned bookmarks (no remaining collections) to inbox-collection
+      const orphaned = db.prepare(`
+        SELECT b.id FROM bookmarks b
+        LEFT JOIN bookmark_collections bc ON bc.bookmark_id = b.id
+        WHERE b.is_deleted = 0 AND bc.bookmark_id IS NULL
+      `).all() as { id: string }[];
+      const insertInbox = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+      for (const o of orphaned) {
+        insertInbox.run(o.id, 'inbox-collection');
+      }
+      const result = db.prepare("DELETE FROM collections WHERE id = ?").run(id);
+      if (result.changes === 0) throw new Error("Collection not found");
+    })();
     sendJson(res, { success: true });
   } catch (error: any) {
+    if (error.message === "Collection not found") return notFound(res, error.message);
     internalError(res, error);
   }
 });
@@ -115,11 +132,11 @@ router.post("/collections/:collectionId/bookmarks", (req, res) => {
     if (!Array.isArray(bookmarkIds)) return badRequest(res, "bookmarkIds array is required");
     if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
     const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-    const setCategory = db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ? AND category_id IS NULL");
+    const restore = db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1");
     db.transaction(() => {
       for (const bmId of bookmarkIds) {
         insert.run(bmId, collectionId);
-        setCategory.run(collectionId, bmId);
+        restore.run(bmId);
       }
     })();
     sendJson(res, { success: true, count: bookmarkIds.length });
@@ -132,11 +149,10 @@ router.post("/bookmarks/:id/collections/:collectionId", (req, res) => {
   try {
     const { id, collectionId } = req.params;
     if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
-    db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, collectionId);
-    const bookmark = db.prepare("SELECT category_id FROM bookmarks WHERE id = ?").get(id) as any;
-    if (!bookmark || !bookmark.category_id) {
-      db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionId, id);
-    }
+    db.transaction(() => {
+      db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, collectionId);
+      db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1").run(id);
+    })();
     sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);
@@ -155,7 +171,7 @@ router.post("/bookmarks/:id/collections", (req, res) => {
       db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
       const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
       for (const colId of collectionIds) insert.run(id, colId);
-      db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(collectionIds[0] || null, id);
+      db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1").run(id);
     })();
     const collections = db.prepare(`
       SELECT c.* FROM collections c
@@ -171,12 +187,14 @@ router.post("/bookmarks/:id/collections", (req, res) => {
 router.delete("/bookmarks/:id/collections/:collectionId", (req, res) => {
   try {
     const { id, collectionId } = req.params;
-    db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ? AND collection_id = ?").run(id, collectionId);
-    const bookmark = db.prepare("SELECT category_id FROM bookmarks WHERE id = ?").get(id) as any;
-    if (bookmark && bookmark.category_id === collectionId) {
-      const another = db.prepare("SELECT collection_id FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1").get(id) as any;
-      db.prepare("UPDATE bookmarks SET category_id = ? WHERE id = ?").run(another ? another.collection_id : null, id);
-    }
+    db.transaction(() => {
+      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ? AND collection_id = ?").run(id, collectionId);
+      // If bookmark has no remaining collections, move it to inbox-collection
+      const hasCollections = db.prepare("SELECT 1 FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1").get(id) as any;
+      if (!hasCollections) {
+        db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, 'inbox-collection');
+      }
+    })();
     sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);

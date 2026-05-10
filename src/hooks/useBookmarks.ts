@@ -3,9 +3,9 @@ import { Bookmark } from "../types";
 import { apiClient, ApiError } from "../services/api";
 
 type ToastFn = (toast: { message: string; type: "success" | "error" | "info" } | null) => void;
-type ConfirmFn = (title: string, message: string) => Promise<boolean>;
+type InvalidateFn = () => void;
 
-export function useBookmarks(setToast: ToastFn) {
+export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: InvalidateFn) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [selectedBookmark, setSelectedBookmark] = useState<Bookmark | null>(null);
   const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set());
@@ -17,8 +17,9 @@ export function useBookmarks(setToast: ToastFn) {
     isOpen: boolean;
     title: string;
     message: string;
-    onConfirm: () => void;
-  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
+    onConfirm?: () => void;
+    actions?: { label: string; variant?: 'primary' | 'danger' | 'secondary'; onClick: () => void }[];
+  }>({ isOpen: false, title: "", message: "" });
 
   const fetchBookmarks = useCallback(
     async (collectionId: string | null, tagId: string | null, domain: string | null) => {
@@ -40,6 +41,7 @@ export function useBookmarks(setToast: ToastFn) {
         if (!skipFetch) {
           await fetchBookmarksFn?.();
           await fetchAllFn?.();
+          invalidateBookmarks?.();
         }
         const updated = await apiClient.bookmarks.get(id);
         setSelectedBookmark((prev) => (prev?.id === id ? updated : prev));
@@ -54,7 +56,7 @@ export function useBookmarks(setToast: ToastFn) {
         });
       }
     },
-    [setToast]
+    [setToast, invalidateBookmarks]
   );
 
   const handleAddBookmark = useCallback(
@@ -78,24 +80,28 @@ export function useBookmarks(setToast: ToastFn) {
         const results = settled
           .filter((r): r is PromiseFulfilledResult<import("../services/api").CreateBookmarkResult> => r.status === "fulfilled")
           .map((r) => r.value);
-        const existing = results.filter((r) => r.exists);
-        const added = results.filter((r) => r.success && r.id);
+        const restored = results.filter((r) => r.restored);
+        const existing = results.filter((r) => r.exists && !r.restored);
+        const added = results.filter((r) => r.success && r.id && !r.restored);
         let message = `Added ${added.length} new bookmarks.`;
+        if (restored.length > 0) message += ` ${restored.length} restored from trash.`;
         if (existing.length > 0) message += ` ${existing.length} already existed.`;
         const failed = settled.filter((r) => r.status === "rejected").length;
         if (failed > 0) message += ` ${failed} failed.`;
-        setToast({ message, type: added.length > 0 ? "success" : "info" });
+        setToast({ message, type: added.length > 0 || restored.length > 0 ? "success" : "info" });
 
-        if (added.length > 0) {
+        if (added.length > 0 || restored.length > 0) {
           setIsAdding(false);
           await fetchBookmarksFn?.();
           await fetchAllFn?.();
-          const refreshPromises = added
+          invalidateBookmarks?.();
+          const refreshPromises = [...added, ...restored]
             .filter((r) => r.needsRefresh)
-            .map((r) => refreshFn?.(r.id, true));
+            .map((r) => refreshFn?.(r.id!, true));
           await Promise.all(refreshPromises);
           await fetchBookmarksFn?.();
           await fetchAllFn?.();
+          invalidateBookmarks?.();
         }
       } catch {
         setToast({ message: "An unexpected error occurred", type: "error" });
@@ -103,54 +109,336 @@ export function useBookmarks(setToast: ToastFn) {
         setIsAddingLoading(false);
       }
     },
-    [setToast]
+    [setToast, invalidateBookmarks]
   );
 
-  const handleDeleteBookmark = useCallback(
+  const handleMoveToTrash = useCallback(
     async (id: string, fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
       setConfirmDialog({
         isOpen: true,
-        title: "Delete Bookmark",
-        message: "Are you sure you want to delete this bookmark?",
+        title: "Move to trash",
+        message: "Are you sure you want to move this bookmark to trash?",
         onConfirm: async () => {
           try {
             await apiClient.bookmarks.delete(id);
             if (selectedBookmark?.id === id) setSelectedBookmark(null);
             await fetchBookmarksFn?.();
             await fetchAllFn?.();
-            setToast({ message: "Bookmark deleted successfully", type: "success" });
+            invalidateBookmarks?.();
+            setToast({ message: "Bookmark moved to trash", type: "success" });
+          } catch {
+            setToast({ message: "Failed to move bookmark to trash", type: "error" });
+          }
+        },
+      });
+    },
+    [setToast, selectedBookmark, invalidateBookmarks]
+  );
+
+  const handleRestoreFromTrash = useCallback(
+    async (id: string, fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
+      try {
+        await apiClient.bookmarks.restoreFromTrash(id);
+        if (selectedBookmark?.id === id) setSelectedBookmark(null);
+        await fetchBookmarksFn?.();
+        await fetchAllFn?.();
+        invalidateBookmarks?.();
+        setToast({ message: "Bookmark restored", type: "success" });
+      } catch {
+        setToast({ message: "Failed to restore bookmark", type: "error" });
+      }
+    },
+    [setToast, selectedBookmark, invalidateBookmarks]
+  );
+
+  const handlePermanentlyDelete = useCallback(
+    async (id: string, fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
+      setConfirmDialog({
+        isOpen: true,
+        title: "Delete permanently",
+        message: "Are you sure you want to permanently delete this bookmark? This action cannot be undone.",
+        onConfirm: async () => {
+          try {
+            await apiClient.bookmarks.permanentlyDelete(id);
+            if (selectedBookmark?.id === id) setSelectedBookmark(null);
+            await fetchBookmarksFn?.();
+            await fetchAllFn?.();
+            invalidateBookmarks?.();
+            setToast({ message: "Bookmark deleted permanently", type: "success" });
           } catch {
             setToast({ message: "Failed to delete bookmark", type: "error" });
           }
         },
       });
     },
-    [setToast, selectedBookmark]
+    [setToast, selectedBookmark, invalidateBookmarks]
+  );
+
+  const handleRemoveFromCollection = useCallback(
+    async (bookmark: Bookmark, collectionId: string, fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
+      const otherCollections = bookmark.collections.filter((c) => c.id !== collectionId);
+      const otherNames = otherCollections.map((c) => c.name).join(", ");
+      const message = otherCollections.length > 0
+        ? `This bookmark will remain in: ${otherNames}`
+        : "This bookmark is only in this collection. Removing it will move it to trash.";
+
+      setConfirmDialog({
+        isOpen: true,
+        title: "Remove from collection",
+        message,
+        actions: [
+          { label: "Cancel", variant: "secondary", onClick: () => {} },
+          {
+            label: "Move to trash",
+            variant: "danger",
+            onClick: async () => {
+              try {
+                await apiClient.bookmarks.delete(bookmark.id);
+                if (selectedBookmark?.id === bookmark.id) setSelectedBookmark(null);
+                await fetchBookmarksFn?.();
+                await fetchAllFn?.();
+                invalidateBookmarks?.();
+                setToast({ message: "Bookmark moved to trash", type: "success" });
+              } catch {
+                setToast({ message: "Failed to move bookmark to trash", type: "error" });
+              }
+            },
+          },
+          {
+            label: otherCollections.length === 0 ? "Remove (trash)" : "Remove from collection",
+            variant: "primary",
+            onClick: async () => {
+              try {
+                if (otherCollections.length === 0) {
+                  await apiClient.bookmarks.delete(bookmark.id);
+                } else {
+                  await apiClient.collections.removeFromBookmark(bookmark.id, collectionId);
+                }
+                if (selectedBookmark?.id === bookmark.id) setSelectedBookmark(null);
+                await fetchBookmarksFn?.();
+                await fetchAllFn?.();
+                invalidateBookmarks?.();
+                setToast({ message: "Bookmark removed from collection", type: "success" });
+              } catch {
+                setToast({ message: "Failed to remove bookmark from collection", type: "error" });
+              }
+            },
+          },
+        ],
+      });
+    },
+    [setToast, selectedBookmark, invalidateBookmarks]
+  );
+
+  const handleDeleteBookmark = useCallback(
+    async (bookmark: Bookmark, currentCollectionId?: string | null, fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
+      const isInCurrentCollection = currentCollectionId && bookmark.collections.some((c) => c.id === currentCollectionId);
+
+      if (isInCurrentCollection) {
+        const otherCollections = bookmark.collections.filter((c) => c.id !== currentCollectionId);
+        const onlyHere = otherCollections.length === 0;
+        const message = onlyHere
+          ? "This bookmark is only in this collection. Moving it to trash."
+          : `This bookmark is also in: ${otherCollections.map((c) => c.name).join(", ")}`;
+
+        setConfirmDialog({
+          isOpen: true,
+          title: onlyHere ? "Move to trash" : "Remove from collection",
+          message,
+          actions: [
+            { label: "Cancel", variant: "secondary", onClick: () => {} },
+            ...(onlyHere ? [] : [{
+              label: "Remove from collection" as const,
+              variant: "primary" as const,
+              onClick: async () => {
+                try {
+                  await apiClient.collections.removeFromBookmark(bookmark.id, currentCollectionId);
+                  if (selectedBookmark?.id === bookmark.id) setSelectedBookmark(null);
+                  await fetchBookmarksFn?.();
+                  await fetchAllFn?.();
+                  invalidateBookmarks?.();
+                  setToast({ message: "Bookmark removed from collection", type: "success" });
+                } catch {
+                  setToast({ message: "Failed to remove bookmark from collection", type: "error" });
+                }
+              },
+            }]),
+            {
+              label: "Move to trash",
+              variant: "danger",
+              onClick: async () => {
+                try {
+                  await apiClient.bookmarks.delete(bookmark.id);
+                  if (selectedBookmark?.id === bookmark.id) setSelectedBookmark(null);
+                  await fetchBookmarksFn?.();
+                  await fetchAllFn?.();
+                  invalidateBookmarks?.();
+                  setToast({ message: "Bookmark moved to trash", type: "success" });
+                } catch {
+                  setToast({ message: "Failed to move bookmark to trash", type: "error" });
+                }
+              },
+            },
+          ],
+        });
+      } else {
+        const collectionNames = bookmark.collections.map((c) => c.name).join(", ");
+        const message = bookmark.collections.length > 0
+          ? `This bookmark is in collections: ${collectionNames}`
+          : "Are you sure you want to move this bookmark to trash?";
+        setConfirmDialog({
+          isOpen: true,
+          title: "Move to trash",
+          message,
+          actions: [
+            { label: "Cancel", variant: "secondary", onClick: () => {} },
+            {
+              label: "Move to trash",
+              variant: "danger",
+              onClick: async () => {
+                try {
+                  await apiClient.bookmarks.delete(bookmark.id);
+                  if (selectedBookmark?.id === bookmark.id) setSelectedBookmark(null);
+                  await fetchBookmarksFn?.();
+                  await fetchAllFn?.();
+                  invalidateBookmarks?.();
+                  setToast({ message: "Bookmark moved to trash", type: "success" });
+                } catch {
+                  setToast({ message: "Failed to move bookmark to trash", type: "error" });
+                }
+              },
+            },
+          ],
+        });
+      }
+    },
+    [setToast, selectedBookmark, invalidateBookmarks]
   );
 
   const handleBulkDelete = useCallback(
-    async (fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
+    async (currentCollectionId?: string | null, currentBookmarks?: Bookmark[], fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>, isTrash?: boolean) => {
       if (selectedBookmarkIds.size === 0) return;
-      setConfirmDialog({
-        isOpen: true,
-        title: "Delete Bookmarks",
-        message: `Are you sure you want to delete ${selectedBookmarkIds.size} bookmarks?`,
-        onConfirm: async () => {
-          try {
-            await apiClient.bookmarks.bulkDelete(Array.from(selectedBookmarkIds));
-            setSelectedBookmarkIds(new Set());
-            if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
-              setSelectedBookmark(null);
+
+      if (isTrash) {
+        setConfirmDialog({
+          isOpen: true,
+          title: "Delete permanently",
+          message: `Are you sure you want to permanently delete ${selectedBookmarkIds.size} bookmarks? This action cannot be undone.`,
+          onConfirm: async () => {
+            try {
+              const ids: string[] = Array.from(selectedBookmarkIds);
+              for (const id of ids) {
+                await apiClient.bookmarks.permanentlyDelete(id);
+              }
+              setSelectedBookmarkIds(new Set());
+              if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
+                setSelectedBookmark(null);
+              }
+              await fetchBookmarksFn?.();
+              await fetchAllFn?.();
+              invalidateBookmarks?.();
+              setToast({ message: "Bookmarks deleted permanently", type: "success" });
+            } catch {
+              setToast({ message: "Failed to delete bookmarks", type: "error" });
             }
-            await fetchBookmarksFn?.();
-            await fetchAllFn?.();
-          } catch {
-            setToast({ message: "Failed to bulk delete", type: "error" });
-          }
-        },
-      });
+          },
+        });
+        return;
+      }
+
+      if (currentCollectionId && currentBookmarks) {
+        const selectedBms = currentBookmarks.filter((b) => selectedBookmarkIds.has(b.id));
+        const onlyHereCount = selectedBms.filter(
+          (b) => b.collections.length === 1 && b.collections[0].id === currentCollectionId
+        ).length;
+        const alsoElsewhere = selectedBookmarkIds.size - onlyHereCount;
+
+        let message = `Remove ${selectedBookmarkIds.size} bookmarks from this collection?`;
+        if (onlyHereCount > 0) {
+          message += `\n\n${onlyHereCount} will be moved to trash because they are not in any other collection.`;
+        }
+        if (alsoElsewhere > 0) {
+          message += `\n${alsoElsewhere} will remain in other collections.`;
+        }
+
+        setConfirmDialog({
+          isOpen: true,
+          title: "Remove from collection",
+          message,
+          actions: [
+            { label: "Cancel", variant: "secondary", onClick: () => {} },
+            {
+              label: "Move to trash",
+              variant: "danger",
+              onClick: async () => {
+                try {
+                  await apiClient.bookmarks.bulkDelete(Array.from(selectedBookmarkIds));
+                  setSelectedBookmarkIds(new Set());
+                  if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
+                    setSelectedBookmark(null);
+                  }
+                  await fetchBookmarksFn?.();
+                  await fetchAllFn?.();
+                  invalidateBookmarks?.();
+                  setToast({ message: "Bookmarks moved to trash", type: "success" });
+                } catch {
+                  setToast({ message: "Failed to move bookmarks to trash", type: "error" });
+                }
+              },
+            },
+            {
+              label: "Remove from collection",
+              variant: "primary",
+              onClick: async () => {
+                try {
+                  const ids: string[] = Array.from(selectedBookmarkIds);
+                  for (const id of ids) {
+                    const bm = currentBookmarks.find((b) => b.id === id);
+                    if (bm && bm.collections.length === 1 && bm.collections[0].id === currentCollectionId) {
+                      await apiClient.bookmarks.delete(id);
+                    } else {
+                      await apiClient.collections.removeFromBookmark(id, currentCollectionId);
+                    }
+                  }
+                  setSelectedBookmarkIds(new Set());
+                  if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
+                    setSelectedBookmark(null);
+                  }
+                  await fetchBookmarksFn?.();
+                  await fetchAllFn?.();
+                  invalidateBookmarks?.();
+                  setToast({ message: "Bookmarks removed from collection", type: "success" });
+                } catch {
+                  setToast({ message: "Failed to remove bookmarks from collection", type: "error" });
+                }
+              },
+            },
+          ],
+        });
+      } else {
+        setConfirmDialog({
+          isOpen: true,
+          title: "Move to trash",
+          message: `Are you sure you want to move ${selectedBookmarkIds.size} bookmarks to trash?`,
+          onConfirm: async () => {
+            try {
+              await apiClient.bookmarks.bulkDelete(Array.from(selectedBookmarkIds));
+              setSelectedBookmarkIds(new Set());
+              if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
+                setSelectedBookmark(null);
+              }
+              await fetchBookmarksFn?.();
+              await fetchAllFn?.();
+              invalidateBookmarks?.();
+              setToast({ message: "Bookmarks moved to trash", type: "success" });
+            } catch {
+              setToast({ message: "Failed to move bookmarks to trash", type: "error" });
+            }
+          },
+        });
+      }
     },
-    [selectedBookmarkIds, selectedBookmark, setToast]
+    [selectedBookmarkIds, selectedBookmark, setToast, invalidateBookmarks]
   );
 
   const handleBulkRefresh = useCallback(
@@ -185,6 +473,7 @@ export function useBookmarks(setToast: ToastFn) {
               type: "success",
             });
             setSelectedBookmarkIds(new Set());
+            invalidateBookmarks?.();
           } catch {
             setToast({ message: "Failed to refresh some bookmarks", type: "error" });
           } finally {
@@ -193,7 +482,7 @@ export function useBookmarks(setToast: ToastFn) {
         },
       });
     },
-    [selectedBookmarkIds, selectedBookmark, setToast]
+    [selectedBookmarkIds, selectedBookmark, setToast, invalidateBookmarks]
   );
 
   const handleUpdateBookmarkCollections = useCallback(
@@ -205,13 +494,14 @@ export function useBookmarks(setToast: ToastFn) {
           setSelectedBookmark(updated);
           await fetchBookmarksFn?.();
           await fetchCollectionsFn?.();
+          invalidateBookmarks?.();
           setToast({ message: "Collections updated", type: "success" });
         }
       } catch {
         setToast({ message: "Failed to update collections", type: "error" });
       }
     },
-    [setToast]
+    [setToast, invalidateBookmarks]
   );
 
   const handleCategorizeAll = useCallback(
@@ -224,6 +514,7 @@ export function useBookmarks(setToast: ToastFn) {
         await fetchBookmarksFn?.();
         await fetchCollectionsFn?.();
         await fetchTagsFn?.();
+        invalidateBookmarks?.();
       } catch (error) {
         const msg = error instanceof ApiError ? error.message : "Failed to categorize";
         setToast({ message: msg, type: "error" });
@@ -231,7 +522,7 @@ export function useBookmarks(setToast: ToastFn) {
         setIsCategorizing(false);
       }
     },
-    [isCategorizing, setToast]
+    [isCategorizing, setToast, invalidateBookmarks]
   );
 
   const toggleBookmarkSelection = useCallback((id: string) => {
@@ -261,6 +552,10 @@ export function useBookmarks(setToast: ToastFn) {
     handleRefreshBookmark,
     handleAddBookmark,
     handleDeleteBookmark,
+    handleRemoveFromCollection,
+    handleMoveToTrash,
+    handleRestoreFromTrash,
+    handlePermanentlyDelete,
     handleBulkDelete,
     handleBulkRefresh,
     handleUpdateBookmarkCollections,

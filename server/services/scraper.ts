@@ -257,7 +257,6 @@ export async function fetchBookmarkData(url: string) {
     cover_image_url,
     images_json,
     content_text,
-    category_id: null,
     domain,
     suggestedTags: []
   };

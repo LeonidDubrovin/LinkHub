@@ -30,7 +30,8 @@ function BookmarkItemInner({
   onDragStart,
   onContextMenu,
 }: BookmarkItemProps) {
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     onSelect(bookmark);
   }, [bookmark, onSelect]);
 

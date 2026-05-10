@@ -32,16 +32,6 @@ db.pragma('foreign_keys = ON');
 
 // Create tables
 db.exec(`
-  CREATE TABLE IF NOT EXISTS categories (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    icon TEXT,
-    color TEXT,
-    parent_id TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (parent_id) REFERENCES categories(id)
-  );
-
   CREATE TABLE IF NOT EXISTS bookmarks (
     id TEXT PRIMARY KEY,
     url TEXT NOT NULL,
@@ -49,7 +39,6 @@ db.exec(`
     description TEXT,
     cover_image_url TEXT,
     content_text TEXT,
-    category_id TEXT,
     domain TEXT,
     images_json TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -84,7 +73,7 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
-  -- Collections table (replaces categories)
+  -- Collections table
   CREATE TABLE IF NOT EXISTS collections (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -107,28 +96,36 @@ db.exec(`
     FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
   );
   `);
- 
+
+ // Legacy table — kept for one-time migration only
+ db.exec(`
+   CREATE TABLE IF NOT EXISTS categories (
+     id TEXT PRIMARY KEY,
+     name TEXT NOT NULL,
+     icon TEXT,
+     color TEXT,
+     parent_id TEXT,
+     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+   );
+ `);
+
  // Migrations for existing databases
- try {
-   db.exec("ALTER TABLE categories ADD COLUMN parent_id TEXT REFERENCES categories(id)");
- } catch (e) { /* ignore if exists */ }
- 
  try {
    db.exec("ALTER TABLE bookmarks ADD COLUMN domain TEXT");
  } catch (e) { /* ignore if exists */ }
- 
+
  try {
    db.exec("ALTER TABLE bookmarks ADD COLUMN images_json TEXT");
  } catch (e) { /* ignore if exists */ }
- 
+
  try {
    db.exec("ALTER TABLE bookmarks ADD COLUMN categorization_at DATETIME");
  } catch (e) { /* ignore if exists */ }
- 
+
  try {
    db.exec("ALTER TABLE bookmarks ADD COLUMN categorization_source TEXT");
  } catch (e) { /* ignore if exists */ }
- 
+
  try {
    const allBookmarks = db.prepare("SELECT id, url FROM bookmarks WHERE domain IS NULL").all() as any[];
   const updateDomain = db.prepare("UPDATE bookmarks SET domain = ? WHERE id = ?");
@@ -146,25 +143,14 @@ try {
   db.exec("ALTER TABLE collections ADD COLUMN sort_order INTEGER DEFAULT 0");
 } catch (e) { /* ignore if exists */ }
 
- // Insert default categories if empty
-const catCount = db
-  .prepare("SELECT COUNT(*) as count FROM categories")
-  .get() as { count: number };
-
- if (catCount.count === 0) {
-   const insertCat = db.prepare(
-     "INSERT INTO categories (id, name, icon, color) VALUES (?, ?, ?, ?)"
-   );
-   insertCat.run(uuidv4(), "Articles", "FileText", "#3b82f6");
-   insertCat.run(uuidv4(), "Videos", "Video", "#ef4444");
-   insertCat.run(uuidv4(), "Programming", "Code", "#10b981");
-   insertCat.run(uuidv4(), "Design", "Palette", "#ec4899");
+ // One-time migration: categories → collections (only if bookmark_collections is empty)
+ const linkCount = db.prepare("SELECT COUNT(*) as count FROM bookmark_collections").get() as { count: number };
+ if (linkCount.count === 0) {
+   console.log("Running one-time categories → collections migration...");
+   runSpacesMigration(db, uuidv4);
  }
 
- // Run spaces & collections migration (one-time, idempotent)
- runSpacesMigration(db, uuidv4);
-
-  // Migration to Spaces & Collections model - idempotent (can run multiple times)
+  // Migration to Spaces & Collections model - idempotent
   function runSpacesMigration(db: Database, uuidv4: (options?: any) => string) {
     try {
       console.log("Running spaces & collections migration (idempotent)...");

@@ -32,6 +32,7 @@ interface BookmarkListProps {
   onFilterChange: (v: FilterBy) => void;
   onViewModeChange: (v: "list" | "grid") => void;
   onItemSizeChange: (v: "small" | "medium" | "large") => void;
+  isTrash?: boolean;
   onBulkDelete: () => void;
   onBulkRefresh: () => void;
   onDismissInspector?: () => void;
@@ -96,6 +97,7 @@ export function BookmarkList({
   onFilterChange,
   onViewModeChange,
   onItemSizeChange,
+  isTrash,
   onBulkDelete,
   onBulkRefresh,
   onDismissInspector,
@@ -173,7 +175,7 @@ export function BookmarkList({
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-md text-sm font-medium transition-colors whitespace-nowrap"
               >
                 <Trash2 size={14} />
-                Delete ({selectedBookmarkIds.size})
+                {isTrash ? "Delete permanently" : "Delete"} ({selectedBookmarkIds.size})
               </button>
             </div>
           )}

@@ -97,11 +97,15 @@ export default function App() {
   const [bookmarkContextMenu, setBookmarkContextMenu] = useState<{ bookmark: Bookmark; position: { x: number; y: number } } | null>(null);
 
   const queryClient = useQueryClient();
+  const invalidateBookmarks = useCallback(() => {
+    queryClient.resetQueries({ queryKey: ["bookmarks"] });
+    queryClient.resetQueries({ queryKey: ["trash"] });
+  }, [queryClient]);
 
   const api = useApi(setToast);
   const ui = useUI();
   const insp = useInspector();
-  const bm = useBookmarks(setToast);
+  const bm = useBookmarks(setToast, invalidateBookmarks);
   const coll = useCollections(api.collections, api.fetchCollections, api.fetchSpaces, api.spaces, setToast, (deletedId) => {
     if (selectedCollectionId === deletedId) setSelectedCollectionId(null);
   });
@@ -216,15 +220,53 @@ export default function App() {
   );
 
   const handleDeleteBookmark = useCallback(
-    async (id: string) => {
-      await bm.handleDeleteBookmark(id, currentRefetch, fetchAll);
+    async (bookmark: Bookmark, currentCollectionId?: string | null) => {
+      await bm.handleDeleteBookmark(bookmark, currentCollectionId, currentRefetch, fetchAll);
     },
     [bm.handleDeleteBookmark, currentRefetch, fetchAll]
   );
 
+  const handleRemoveFromCollection = useCallback(
+    async (bookmark: Bookmark, collectionId: string) => {
+      await bm.handleRemoveFromCollection(bookmark, collectionId, currentRefetch, fetchAll);
+    },
+    [bm.handleRemoveFromCollection, currentRefetch, fetchAll]
+  );
+
+  const handleMoveToTrash = useCallback(
+    async (id: string) => {
+      await bm.handleMoveToTrash(id, currentRefetch, fetchAll);
+    },
+    [bm.handleMoveToTrash, currentRefetch, fetchAll]
+  );
+
+  const handleRestoreFromTrash = useCallback(
+    async (id: string) => {
+      await bm.handleRestoreFromTrash(id, currentRefetch, fetchAll);
+    },
+    [bm.handleRestoreFromTrash, currentRefetch, fetchAll]
+  );
+
+  const handlePermanentlyDelete = useCallback(
+    async (id: string) => {
+      await bm.handlePermanentlyDelete(id, currentRefetch, fetchAll);
+    },
+    [bm.handlePermanentlyDelete, currentRefetch, fetchAll]
+  );
+
   const handleBulkDelete = useCallback(
-    async () => { await bm.handleBulkDelete(currentRefetch, fetchAll); },
-    [bm.handleBulkDelete, currentRefetch, fetchAll]
+    async () => {
+      await bm.handleBulkDelete(selectedCollectionId, currentBookmarks, currentRefetch, fetchAll, isViewingTrash);
+    },
+    [bm.handleBulkDelete, selectedCollectionId, currentBookmarks, currentRefetch, fetchAll, isViewingTrash]
+  );
+
+  const handleDropBookmarks = useCallback(
+    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => {
+      await coll.handleDropBookmarks(collectionId, bookmarkIds, sourceCollectionId, currentRefetch);
+      invalidateBookmarks();
+    },
+    [coll.handleDropBookmarks, currentRefetch, invalidateBookmarks]
   );
 
   const handleBulkRefresh = useCallback(
@@ -368,7 +410,7 @@ export default function App() {
           onCollectionContextMenu={coll.handleContextMenu}
           onSpaceContextMenu={coll.handleSpaceContextMenu}
           onArboristMove={coll.handleArboristMove}
-          onDropBookmarks={coll.handleDropBookmarks}
+          onDropBookmarks={handleDropBookmarks}
           sidebarWidth={sidebarWidth}
           onSidebarResizeStart={() => setIsSidebarDragging(true)}
           setIsSettingsOpen={setIsSettingsOpen}
@@ -391,6 +433,7 @@ export default function App() {
           selectedDomain={selectedDomain}
           collections={api.collections}
           tags={[]}
+          isTrash={isViewingTrash}
           onSelectBookmark={onSelectBookmark}
           onToggleSelectAll={toggleSelectAll}
           onToggleBookmarkSelection={bm.toggleBookmarkSelection}
@@ -429,7 +472,16 @@ export default function App() {
           onWebPreviewModeChange={insp.setWebPreviewMode}
           onWebPreviewKeyChange={insp.setWebPreviewKey}
           onRefreshBookmark={handleRefreshBookmark}
-          onDeleteBookmark={handleDeleteBookmark}
+          isTrash={isViewingTrash}
+          onDeleteBookmark={() => {
+            if (!bm.selectedBookmark) return;
+            if (isViewingTrash) {
+              handlePermanentlyDelete(bm.selectedBookmark.id);
+            } else {
+              handleDeleteBookmark(bm.selectedBookmark, selectedCollectionId);
+            }
+          }}
+          onRestoreFromTrash={(id) => handleRestoreFromTrash(id)}
           onUpdateBookmarkCollections={handleUpdateBookmarkCollections}
           onToggleEditingCollections={() => {
             if (isEditingCollections) {
@@ -472,6 +524,7 @@ export default function App() {
         title={bm.confirmDialog.title}
         message={bm.confirmDialog.message}
         onConfirm={bm.confirmDialog.onConfirm}
+        actions={bm.confirmDialog.actions}
         onCancel={() => bm.setConfirmDialog({ ...bm.confirmDialog, isOpen: false })}
       />
 
@@ -542,11 +595,17 @@ export default function App() {
         <BookmarkContextMenu
           bookmark={bookmarkContextMenu.bookmark}
           position={bookmarkContextMenu.position}
+          currentCollectionId={selectedCollectionId}
+          isTrash={isViewingTrash}
           onClose={() => setBookmarkContextMenu(null)}
           onOpen={(url) => window.open(url, "_blank")}
           onCopyUrl={handleCopyUrl}
           onRefresh={handleRefreshBookmark}
           onDelete={handleDeleteBookmark}
+          onRemoveFromCollection={handleRemoveFromCollection}
+          onMoveToTrash={handleMoveToTrash}
+          onRestore={handleRestoreFromTrash}
+          onPermanentlyDelete={handlePermanentlyDelete}
         />
       )}
     </>

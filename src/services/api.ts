@@ -26,6 +26,7 @@ async function request<T>(path: string, opts?: RequestInit): Promise<T> {
 export interface CreateBookmarkResult {
   success: boolean;
   exists?: boolean;
+  restored?: boolean;
   id?: string;
   needsRefresh?: boolean;
 }

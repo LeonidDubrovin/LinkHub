@@ -35,13 +35,14 @@ export class CategorizationService {
        return { success: false, source: null, tags: [], error: "Bookmark not found" };
      }
 
-     // 2. Check if already categorized (has category_id) and not forcing
-     if (!force && bookmark.category_id) {
-       return { 
-         success: true, 
-         source: bookmark.categorization_source as any || 'manual', 
-         tags: [], 
-         error: null 
+     // 2. Check if already categorized (has collections) and not forcing
+     const hasCollections = db.prepare("SELECT 1 FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1").get(bookmarkId) as any;
+     if (!force && hasCollections) {
+       return {
+         success: true,
+         source: bookmark.categorization_source as any || 'manual',
+         tags: [],
+         error: null
        };
      }
 
@@ -117,18 +118,18 @@ export class CategorizationService {
        return { success: false, source: null, tags: [], error: "No collections resolved" };
      }
 
-     // 8. Remove old collection links (including Inbox) and add new ones
-     db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(bookmarkId);
-     
-     const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-     for (const colId of collectionIds) {
-       insertLink.run(bookmarkId, colId);
-     }
+      // 8. Remove old collection links (including Inbox) and add new ones
+      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(bookmarkId);
 
-     // 9. Update bookmark with first collection as legacy category_id for backward compatibility
-     db.prepare(
-       "UPDATE bookmarks SET category_id = ?, categorization_at = ?, categorization_source = ? WHERE id = ?"
-     ).run(collectionIds[0], new Date().toISOString(), source, bookmarkId);
+      const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+      for (const colId of collectionIds) {
+        insertLink.run(bookmarkId, colId);
+      }
+
+      // 9. Update bookmark categorization metadata
+      db.prepare(
+        "UPDATE bookmarks SET categorization_at = ?, categorization_source = ? WHERE id = ?"
+      ).run(new Date().toISOString(), source, bookmarkId);
 
      // 10. Process tags: create and link
      const tagIds: string[] = [];
@@ -158,9 +159,9 @@ export class CategorizationService {
    }
 
   async categorizeAll(onlyUntagged: boolean = true): Promise<{total: number, processed: number, failed: number, errors: string[]}> {
-    let query = "SELECT id FROM bookmarks WHERE is_deleted = 0 AND category_id IS NULL";
+    let query = `SELECT id FROM bookmarks WHERE is_deleted = 0 AND NOT EXISTS (SELECT 1 FROM bookmark_collections bc WHERE bc.bookmark_id = bookmarks.id)`;
     const params: any[] = [];
-    
+
     if (onlyUntagged) {
       // Already in query
     }
@@ -197,9 +198,9 @@ export class CategorizationService {
 
   async getStats(): Promise<{total: number, categorized: number, uncategorized: number, bySource: Record<string, number>}> {
     const total = db.prepare("SELECT COUNT(*) as count FROM bookmarks WHERE is_deleted = 0").get().count;
-    const categorized = db.prepare("SELECT COUNT(*) as count FROM bookmarks WHERE is_deleted = 0 AND category_id IS NOT NULL").get().count;
+    const categorized = db.prepare(`SELECT COUNT(*) as count FROM bookmarks b WHERE is_deleted = 0 AND EXISTS (SELECT 1 FROM bookmark_collections bc WHERE bc.bookmark_id = b.id)`).get().count;
     const uncategorized = total - categorized;
-    
+
     const bySource: Record<string, number> = {};
     const rows = db.prepare("SELECT categorization_source, COUNT(*) as count FROM bookmarks WHERE is_deleted = 0 AND categorization_source IS NOT NULL GROUP BY categorization_source").all();
     for (const row of rows as any[]) {

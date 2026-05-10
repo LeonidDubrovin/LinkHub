@@ -34,7 +34,9 @@ interface InspectorPanelProps {
   onWebPreviewModeChange: (mode: "proxy" | "direct") => void;
   onWebPreviewKeyChange: (key: number) => void;
   onRefreshBookmark: (id: string) => void;
-  onDeleteBookmark: (id: string) => void;
+  isTrash?: boolean;
+  onDeleteBookmark: () => void;
+  onRestoreFromTrash?: (id: string) => void;
   onUpdateBookmarkCollections: (bookmarkId: string, collectionIds: string[]) => void;
   onToggleEditingCollections: () => void;
   onSelectCollectionForEdit: (id: string, checked: boolean) => void;
@@ -55,6 +57,7 @@ export function InspectorPanel({
   isEditingCollections,
   selectedCollectionIdsForEdit,
   allCollectionsTree,
+  isTrash,
   onTabChange,
   onClose,
   onResizeStart,
@@ -63,11 +66,12 @@ export function InspectorPanel({
   onWebPreviewKeyChange,
   onRefreshBookmark,
   onDeleteBookmark,
+  onRestoreFromTrash,
   onUpdateBookmarkCollections,
   onToggleEditingCollections,
   onSelectCollectionForEdit,
   getYouTubeId,
-  }: InspectorPanelProps) {
+}: InspectorPanelProps) {
   if (!selectedBookmark || !isInspectorOpen) {
     return null;
   }
@@ -130,10 +134,19 @@ export function InspectorPanel({
               >
                 <RefreshCw size={16} className={cn(refreshingBookmarkIds.has(selectedBookmark.id) && "animate-spin")} />
               </button>
+              {isTrash && onRestoreFromTrash && (
+                <button
+                  onClick={() => onRestoreFromTrash(selectedBookmark.id)}
+                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md"
+                  title="Restore from trash"
+                >
+                  <RefreshCw size={16} />
+                </button>
+              )}
               <button
-                onClick={() => onDeleteBookmark(selectedBookmark.id)}
+                onClick={() => onDeleteBookmark()}
                 className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md"
-                title="Delete Bookmark"
+                title={isTrash ? "Delete permanently" : "Delete Bookmark"}
               >
                 <Trash2 size={16} />
               </button>
