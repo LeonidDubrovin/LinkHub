@@ -69,12 +69,13 @@ export const ArboristNode = React.memo(function ArboristNode({
     return (
       <div
         style={groupStyle}
-        className="flex items-center gap-2 py-1.5 pr-3 text-sm mt-3 pt-3 mb-px select-none font-semibold text-slate-500 border-t border-slate-200"
+        className="flex items-center gap-2 py-1.5 pr-3 text-sm mb-px select-none text-slate-700 hover:bg-slate-100 cursor-pointer"
+        onClick={() => node.toggle()}
         onContextMenu={(e) => onSpaceContextMenu(e, space)}
       >
         <span
           onClick={(e) => { e.stopPropagation(); node.toggle(); }}
-          className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
+          className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600"
         >
           <ChevronRight
             size={14}
