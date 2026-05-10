@@ -58,7 +58,7 @@ export const ArboristNode = React.memo(function ArboristNode({
   if (data.isGroup) {
     const groupStyle = { ...style, paddingLeft: (style.paddingLeft as number || 0) + 8 };
     return (
-      <div style={groupStyle} className="flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mb-px select-none hover:bg-slate-100 text-slate-700">
+      <div style={groupStyle} className="flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mt-2 mb-px select-none bg-slate-100 font-semibold text-slate-700 hover:bg-slate-200">
         <span
           onClick={(e) => { e.stopPropagation(); node.toggle(); }}
           className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
