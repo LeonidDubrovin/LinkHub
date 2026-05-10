@@ -70,7 +70,7 @@ export const ArboristNode = React.memo(function ArboristNode({
     return (
       <div
         style={groupStyle}
-        className="flex items-center gap-2 py-1.5 pr-3 text-sm mt-2 mb-px select-none font-semibold text-slate-700 cursor-pointer hover:text-slate-900"
+        className="flex items-center gap-2 py-1.5 pr-3 text-sm mt-2 mb-1 select-none font-semibold text-slate-700 cursor-pointer hover:text-slate-900"
         onClick={() => node.toggle()}
         onContextMenu={(e) => onSpaceContextMenu(e, space)}
       >

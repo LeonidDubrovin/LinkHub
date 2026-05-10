@@ -100,7 +100,7 @@ export default function App() {
   const ui = useUI();
   const insp = useInspector();
   const bm = useBookmarks(setToast);
-  const coll = useCollections(api.collections, api.fetchCollections, api.spaces, setToast, (deletedId) => {
+  const coll = useCollections(api.collections, api.fetchCollections, api.fetchSpaces, api.spaces, setToast, (deletedId) => {
     if (selectedCollectionId === deletedId) setSelectedCollectionId(null);
   });
 
@@ -450,6 +450,14 @@ export default function App() {
         message={bm.confirmDialog.message}
         onConfirm={bm.confirmDialog.onConfirm}
         onCancel={() => bm.setConfirmDialog({ ...bm.confirmDialog, isOpen: false })}
+      />
+
+      <ConfirmDialog
+        isOpen={coll.confirmDialog.isOpen}
+        title={coll.confirmDialog.title}
+        message={coll.confirmDialog.message}
+        onConfirm={coll.confirmDialog.onConfirm}
+        onCancel={() => coll.setConfirmDialog({ ...coll.confirmDialog, isOpen: false })}
       />
 
       {coll.contextMenu && (

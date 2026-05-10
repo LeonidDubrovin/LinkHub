@@ -9,6 +9,7 @@ type ToastFn = (toast: { message: string; type: "success" | "error" | "info" } |
 export function useCollections(
   collections: Collection[],
   fetchCollections: () => Promise<void>,
+  fetchSpaces: () => Promise<void>,
   spaces: SpaceWithCollections[],
   setToast: ToastFn,
   onCollectionDeleted?: (collectionId: string) => void
@@ -21,6 +22,12 @@ export function useCollections(
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [createCollectionSpaceId, setCreateCollectionSpaceId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
 
   const isDescendant = useCallback(
     (candidateAncestorId: string, descendantId: string): boolean => {
@@ -102,17 +109,23 @@ export function useCollections(
   );
 
   const handleDeleteCollection = useCallback(
-    async (collectionId: string) => {
-      if (!confirm("Delete this collection? Bookmarks will remain but will be unlinked from this collection.")) return;
-      try {
-        await apiClient.collections.delete(collectionId);
-        await fetchCollections();
-        onCollectionDeleted?.(collectionId);
-        setToast({ message: "Collection deleted", type: "success" });
-      } catch (error) {
-        const msg = error instanceof ApiError ? error.message : "Failed to delete collection";
-        setToast({ message: msg, type: "error" });
-      }
+    (collectionId: string) => {
+      setConfirmDialog({
+        isOpen: true,
+        title: "Delete Collection",
+        message: "Delete this collection? Bookmarks will remain but will be unlinked from this collection.",
+        onConfirm: async () => {
+          try {
+            await apiClient.collections.delete(collectionId);
+            await fetchCollections();
+            onCollectionDeleted?.(collectionId);
+            setToast({ message: "Collection deleted", type: "success" });
+          } catch (error) {
+            const msg = error instanceof ApiError ? error.message : "Failed to delete collection";
+            setToast({ message: msg, type: "error" });
+          }
+        },
+      });
     },
     [fetchCollections, setToast, onCollectionDeleted]
   );
@@ -384,18 +397,25 @@ export function useCollections(
   );
 
   const handleDeleteSpace = useCallback(
-    async (spaceId: string) => {
-      if (!confirm("Delete this group? All collections inside will also be removed. Bookmarks will remain but will be unlinked from those collections.")) return;
-      try {
-        await apiClient.spaces.delete(spaceId);
-        await fetchCollections();
-        setToast({ message: "Group deleted", type: "success" });
-      } catch (error) {
-        const msg = error instanceof ApiError ? error.message : "Failed to delete group";
-        setToast({ message: msg, type: "error" });
-      }
+    (spaceId: string) => {
+      setConfirmDialog({
+        isOpen: true,
+        title: "Delete Group",
+        message: "Delete this group? All collections inside will also be removed. Bookmarks will remain but will be unlinked from those collections.",
+        onConfirm: async () => {
+          try {
+            await apiClient.spaces.delete(spaceId);
+            await fetchSpaces();
+            await fetchCollections();
+            setToast({ message: "Group deleted", type: "success" });
+          } catch (error) {
+            const msg = error instanceof ApiError ? error.message : "Failed to delete group";
+            setToast({ message: msg, type: "error" });
+          }
+        },
+      });
     },
-    [fetchCollections, setToast]
+    [fetchCollections, fetchSpaces, setToast]
   );
 
   const handleRenameSubmit = useCallback(
@@ -467,6 +487,8 @@ export function useCollections(
     handleMoveCollectionUp,
     handleMoveCollectionDown,
     handleMoveCollectionOut,
+    confirmDialog,
+    setConfirmDialog,
     handleContextMenu,
     handleSpaceContextMenu,
     handleRenameSpace,
