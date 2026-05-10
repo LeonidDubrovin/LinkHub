@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo, useDeferredValue } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddBookmarkModal } from "./components/AddBookmarkModal";
@@ -18,6 +19,7 @@ import { useUI } from "./hooks/useUI";
 import { useInspector } from "./hooks/useInspector";
 import { useCollections } from "./hooks/useCollections";
 import { useBookmarks } from "./hooks/useBookmarks";
+import { usePaginatedBookmarks, usePaginatedTrash } from "./hooks/usePaginatedBookmarks";
 import { apiClient } from "./services/api";
 import { buildCollectionTree } from "./utils/buildCollectionTree";
 
@@ -62,6 +64,15 @@ function CollectionContextMenuWrapper({
   );
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 type ToastMessage = { message: string; type: "success" | "error" | "info" };
 type SortBy = "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc";
 type FilterBy = "all" | "has_images" | "has_summary" | "has_content";
@@ -82,26 +93,7 @@ export default function App() {
   });
   const [isSidebarDragging, setIsSidebarDragging] = useState(false);
 
-  useEffect(() => {
-    if (!isSidebarDragging) {
-      localStorage.setItem("sidebarWidth", sidebarWidth.toString());
-    }
-  }, [isSidebarDragging, sidebarWidth]);
-
-  useEffect(() => {
-    if (!isSidebarDragging) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      const newWidth = Math.max(180, Math.min(400, e.clientX));
-      setSidebarWidth(newWidth);
-    };
-    const handleMouseUp = () => setIsSidebarDragging(false);
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isSidebarDragging]);
+  const queryClient = useQueryClient();
 
   const api = useApi(setToast);
   const ui = useUI();
@@ -111,9 +103,45 @@ export default function App() {
     if (selectedCollectionId === deletedId) setSelectedCollectionId(null);
   });
 
-  const fetchBookmarks = useCallback(async () => {
-    await bm.fetchBookmarks(selectedCollectionId, null, selectedDomain);
-  }, [bm.fetchBookmarks, selectedCollectionId, selectedDomain]);
+  const debouncedSearchQuery = useDebounce(ui.searchQuery, 300);
+
+  const {
+    bookmarks,
+    total,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    refetch: refetchBookmarks,
+  } = usePaginatedBookmarks(
+    !isViewingTrash ? selectedCollectionId : null,
+    !isViewingTrash ? selectedDomain : null,
+    debouncedSearchQuery,
+    ui.sortBy,
+    ui.filterBy,
+    !isViewingTrash
+  );
+
+  const {
+    trashItems,
+    total: trashTotal,
+    fetchNextPage: fetchNextTrashPage,
+    hasNextPage: hasNextTrashPage,
+    isFetchingNextPage: isFetchingNextTrashPage,
+    isLoading: isTrashLoading,
+    refetch: refetchTrash,
+  } = usePaginatedTrash(
+    isViewingTrash ? debouncedSearchQuery : "",
+    ui.sortBy,
+    isViewingTrash
+  );
+
+  const currentBookmarks = isViewingTrash ? trashItems : bookmarks;
+  const currentTotal = isViewingTrash ? trashTotal : total;
+  const currentFetchNextPage = isViewingTrash ? fetchNextTrashPage : fetchNextPage;
+  const currentHasNextPage = isViewingTrash ? hasNextTrashPage : hasNextPage;
+  const currentIsFetchingNextPage = isViewingTrash ? isFetchingNextTrashPage : isFetchingNextPage;
+  const currentRefetch = isViewingTrash ? refetchTrash : refetchBookmarks;
 
   const fetchAll = useCallback(async () => {
     await Promise.all([api.fetchSpaces(), api.fetchCollections(), api.fetchTags(), api.fetchDomains()]);
@@ -122,17 +150,11 @@ export default function App() {
   useEffect(() => { api.initialize(); }, []);
 
   useEffect(() => {
-    if (isViewingTrash) {
-      apiClient.bookmarks.listTrash().then((data) => {
-        bm.setBookmarks(Array.isArray(data) ? data : []);
-      });
-    } else {
-      bm.fetchBookmarks(selectedCollectionId, null, selectedDomain);
-    }
     bm.setSelectedBookmark(null);
+    bm.setSelectedBookmarkIds(new Set());
     insp.setIsInspectorOpen(false);
     insp.setReaderContent(null);
-  }, [selectedCollectionId, selectedDomain, isViewingTrash]);
+  }, [selectedCollectionId, selectedDomain, isViewingTrash, debouncedSearchQuery, ui.sortBy, ui.filterBy]);
 
   const handleSelectCollection = useCallback((id: string | null) => {
     setSelectedCollectionId(id);
@@ -178,45 +200,45 @@ export default function App() {
 
   const handleRefreshBookmark = useCallback(
     async (id: string, skipFetch = false) => {
-      await bm.handleRefreshBookmark(id, skipFetch, fetchBookmarks, fetchAll);
+      await bm.handleRefreshBookmark(id, skipFetch, currentRefetch, fetchAll);
     },
-    [bm.handleRefreshBookmark, fetchBookmarks, fetchAll]
+    [bm.handleRefreshBookmark, currentRefetch, fetchAll]
   );
 
   const handleAddBookmark = useCallback(
     async (newUrls: string, collectionIds?: string[]) => {
-      await bm.handleAddBookmark(newUrls, collectionIds, fetchBookmarks, fetchAll, handleRefreshBookmark);
+      await bm.handleAddBookmark(newUrls, collectionIds, currentRefetch, fetchAll, handleRefreshBookmark);
     },
-    [bm.handleAddBookmark, fetchBookmarks, fetchAll, handleRefreshBookmark]
+    [bm.handleAddBookmark, currentRefetch, fetchAll, handleRefreshBookmark]
   );
 
   const handleDeleteBookmark = useCallback(
     async (id: string) => {
-      await bm.handleDeleteBookmark(id, fetchBookmarks, fetchAll);
+      await bm.handleDeleteBookmark(id, currentRefetch, fetchAll);
     },
-    [bm.handleDeleteBookmark, fetchBookmarks, fetchAll]
+    [bm.handleDeleteBookmark, currentRefetch, fetchAll]
   );
 
   const handleBulkDelete = useCallback(
-    async () => { await bm.handleBulkDelete(fetchBookmarks, fetchAll); },
-    [bm.handleBulkDelete, fetchBookmarks, fetchAll]
+    async () => { await bm.handleBulkDelete(currentRefetch, fetchAll); },
+    [bm.handleBulkDelete, currentRefetch, fetchAll]
   );
 
   const handleBulkRefresh = useCallback(
-    async () => { await bm.handleBulkRefresh(fetchBookmarks, fetchAll, handleRefreshBookmark); },
-    [bm.handleBulkRefresh, fetchBookmarks, fetchAll, handleRefreshBookmark]
+    async () => { await bm.handleBulkRefresh(currentRefetch, fetchAll, handleRefreshBookmark); },
+    [bm.handleBulkRefresh, currentRefetch, fetchAll, handleRefreshBookmark]
   );
 
   const handleUpdateBookmarkCollections = useCallback(
     async (bookmarkId: string, collectionIds: string[]) => {
-      await bm.handleUpdateBookmarkCollections(bookmarkId, collectionIds, fetchBookmarks, api.fetchCollections);
+      await bm.handleUpdateBookmarkCollections(bookmarkId, collectionIds, currentRefetch, api.fetchCollections);
     },
-    [bm.handleUpdateBookmarkCollections, fetchBookmarks, api.fetchCollections]
+    [bm.handleUpdateBookmarkCollections, currentRefetch, api.fetchCollections]
   );
 
   const handleCategorizeAll = useCallback(
-    async () => { await bm.handleCategorizeAll(fetchBookmarks, api.fetchCollections); },
-    [bm.handleCategorizeAll, fetchBookmarks, api.fetchCollections]
+    async () => { await bm.handleCategorizeAll(currentRefetch, api.fetchCollections); },
+    [bm.handleCategorizeAll, currentRefetch, api.fetchCollections]
   );
 
   const handleBackup = useCallback(async () => {
@@ -261,7 +283,7 @@ export default function App() {
           bm.setSelectedBookmark(null);
           setSelectedCollectionId(null);
           setSelectedDomain(null);
-          await fetchBookmarks();
+          await currentRefetch();
           await fetchAll();
         } catch (error: unknown) {
           const msg = error instanceof Error ? error.message : "Failed to restore backup";
@@ -271,50 +293,21 @@ export default function App() {
         }
       },
     });
-  }, [fetchBookmarks, fetchAll]);
+  }, [currentRefetch, fetchAll]);
 
   const allCollectionsTree = useMemo(
     () => buildCollectionTree(api.collections, null),
     [api.collections]
   );
 
-  const deferredSearchQuery = useDeferredValue(ui.searchQuery);
-
-  const filteredBookmarks = useMemo(
-    () =>
-      bm.bookmarks
-        .filter((b) => {
-          const q = deferredSearchQuery.toLowerCase();
-          const matchesSearch =
-            b.title?.toLowerCase().includes(q) || b.description?.toLowerCase().includes(q) || b.url.toLowerCase().includes(q);
-          if (!matchesSearch) return false;
-          if (ui.filterBy === "has_images") return b.images_json && b.images_json !== "[]";
-          if (ui.filterBy === "has_summary") return !!b.description && b.description.length > 0;
-          if (ui.filterBy === "has_content") return !!b.content_text && b.content_text.length > 0;
-          return true;
-        })
-        .sort((a, b) => {
-          switch (ui.sortBy) {
-            case "date_asc": return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-            case "date_desc": return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-            case "title_asc": return (a.title || "").localeCompare(b.title || "");
-            case "title_desc": return (b.title || "").localeCompare(a.title || "");
-            case "domain_asc": return (a.domain || "").localeCompare(b.domain || "");
-            case "domain_desc": return (b.domain || "").localeCompare(a.domain || "");
-            default: return 0;
-          }
-        }),
-    [bm.bookmarks, deferredSearchQuery, ui.filterBy, ui.sortBy]
-  );
-
   const toggleSelectAll = useCallback(() => {
-    if (filteredBookmarks.length === 0) return;
-    if (bm.selectedBookmarkIds.size === filteredBookmarks.length) {
+    if (currentBookmarks.length === 0) return;
+    if (bm.selectedBookmarkIds.size === currentBookmarks.length) {
       bm.setSelectedBookmarkIds(new Set());
     } else {
-      bm.setSelectedBookmarkIds(new Set(filteredBookmarks.map((b) => b.id)));
+      bm.setSelectedBookmarkIds(new Set(currentBookmarks.map((b) => b.id)));
     }
-  }, [bm.selectedBookmarkIds, filteredBookmarks]);
+  }, [bm.selectedBookmarkIds, currentBookmarks]);
 
   const onSelectBookmark = useCallback((bookmark: Bookmark) => {
     bm.setSelectedBookmark(bookmark);
@@ -367,7 +360,8 @@ export default function App() {
         />
 
         <BookmarkList
-          filteredBookmarks={filteredBookmarks}
+          bookmarks={currentBookmarks}
+          total={currentTotal}
           viewMode={ui.viewMode}
           itemSize={ui.itemSize}
           selectedBookmarkIds={bm.selectedBookmarkIds}
@@ -392,6 +386,9 @@ export default function App() {
           onBulkDelete={handleBulkDelete}
           onBulkRefresh={handleBulkRefresh}
           onDismissInspector={() => insp.setIsInspectorOpen(false)}
+          onLoadMore={currentFetchNextPage}
+          hasNextPage={currentHasNextPage}
+          isFetchingNextPage={currentIsFetchingNextPage}
         />
 
         <InspectorPanel

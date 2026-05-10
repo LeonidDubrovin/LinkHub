@@ -132,40 +132,79 @@ export function validateCollectionIds(collectionIds: string[]): boolean {
   return existingCollections.length === collectionIds.length;
 }
 
-export function buildFilteredBookmarksQuery(
+export function buildPaginatedBookmarksQuery(
   collIds: string[],
   spaceId: string | undefined,
   tagId: string | undefined,
-  domain: string | undefined
-): { query: string; params: any[] } {
-  let query = `SELECT b.*, c.name as category_name, c.color as category_color FROM bookmarks b 
-               LEFT JOIN categories c ON b.category_id = c.id 
-               WHERE b.is_deleted = 0`;
+  domain: string | undefined,
+  searchQuery: string | undefined,
+  filterBy: string | undefined,
+  sortBy: string | undefined,
+  limit: number,
+  offset: number
+): { dataQuery: string; countQuery: string; params: any[]; countParams: any[] } {
+  const ctes: string[] = [];
+  let baseFrom = `FROM bookmarks b LEFT JOIN categories c ON b.category_id = c.id`;
+  let where = `WHERE b.is_deleted = 0`;
   const params: any[] = [];
 
   if (collIds.length > 0) {
     const placeholders = collIds.map(() => '?').join(',');
-    query = `WITH RECURSIVE targetCollections AS 
-             (SELECT id FROM collections WHERE id IN (${placeholders}) 
-              UNION ALL SELECT c.id FROM collections c JOIN targetCollections tc ON c.parent_id = tc.id)
-             ` + query + ` AND EXISTS 
-             (SELECT 1 FROM bookmark_collections bc 
-              WHERE bc.bookmark_id = b.id AND bc.collection_id IN (SELECT id FROM targetCollections))`;
+    ctes.push(`targetCollections AS (
+      SELECT id FROM collections WHERE id IN (${placeholders})
+      UNION ALL SELECT c.id FROM collections c JOIN targetCollections tc ON c.parent_id = tc.id
+    )`);
     params.push(...collIds);
+    where += ` AND EXISTS (
+      SELECT 1 FROM bookmark_collections bc
+      WHERE bc.bookmark_id = b.id AND bc.collection_id IN (SELECT id FROM targetCollections)
+    )`;
   }
-  if (spaceId) {
-    const spacePlaceholders = '?';
-    query = `WITH RECURSIVE spaceCollections AS 
-             (SELECT id FROM collections WHERE space_id = ${spacePlaceholders} 
-              UNION ALL SELECT c.id FROM collections c JOIN spaceCollections sc ON c.parent_id = sc.id)
-             ` + query + ` AND EXISTS 
-             (SELECT 1 FROM bookmark_collections bc 
-              WHERE bc.bookmark_id = b.id AND bc.collection_id IN (SELECT id FROM spaceCollections))`;
-    params.push(String(spaceId));
-  }
-  if (tagId) { query += " AND b.id IN (SELECT bookmark_id FROM bookmark_tags WHERE tag_id = ?)"; params.push(tagId); }
-  if (domain) { query += " AND b.domain = ?"; params.push(domain); }
-  query += " ORDER BY b.created_at DESC";
 
-  return { query, params };
+  if (spaceId) {
+    ctes.push(`spaceCollections AS (
+      SELECT id FROM collections WHERE space_id = ?
+      UNION ALL SELECT c.id FROM collections c JOIN spaceCollections sc ON c.parent_id = sc.id
+    )`);
+    params.push(String(spaceId));
+    where += ` AND EXISTS (
+      SELECT 1 FROM bookmark_collections bc
+      WHERE bc.bookmark_id = b.id AND bc.collection_id IN (SELECT id FROM spaceCollections)
+    )`;
+  }
+
+  if (tagId) { where += " AND b.id IN (SELECT bookmark_id FROM bookmark_tags WHERE tag_id = ?)"; params.push(tagId); }
+  if (domain) { where += " AND b.domain = ?"; params.push(domain); }
+
+  if (searchQuery && searchQuery.trim()) {
+    where += " AND (b.title LIKE ? OR b.description LIKE ? OR b.url LIKE ?)";
+    const pattern = `%${searchQuery.trim()}%`;
+    params.push(pattern, pattern, pattern);
+  }
+
+  if (filterBy === "has_images") {
+    where += " AND b.images_json IS NOT NULL AND b.images_json != '[]' AND b.images_json != ''";
+  } else if (filterBy === "has_summary") {
+    where += " AND b.description IS NOT NULL AND length(b.description) > 0";
+  } else if (filterBy === "has_content") {
+    where += " AND b.content_text IS NOT NULL AND length(b.content_text) > 0";
+  }
+
+  let orderBy = " ORDER BY b.created_at DESC";
+  switch (sortBy) {
+    case "date_asc": orderBy = " ORDER BY b.created_at ASC"; break;
+    case "title_asc": orderBy = " ORDER BY b.title ASC, b.url ASC"; break;
+    case "title_desc": orderBy = " ORDER BY b.title DESC, b.url DESC"; break;
+    case "domain_asc": orderBy = " ORDER BY b.domain ASC"; break;
+    case "domain_desc": orderBy = " ORDER BY b.domain DESC"; break;
+  }
+
+  const ctePrefix = ctes.length > 0 ? `WITH RECURSIVE ${ctes.join(", ")} ` : "";
+  const dataQuery = `${ctePrefix}SELECT b.*, c.name as category_name, c.color as category_color ${baseFrom} ${where}${orderBy} LIMIT ? OFFSET ?`;
+  const countQuery = `${ctePrefix}SELECT COUNT(*) as total ${baseFrom} ${where}`;
+
+  const countParams = [...params];
+  params.push(limit, offset);
+
+  return { dataQuery, countQuery, params, countParams };
 }

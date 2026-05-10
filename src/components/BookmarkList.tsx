@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { Search, LayoutGrid, List as ListIcon, Trash2, RefreshCw, ArrowUpDown, Filter, ChevronDown, Globe, ExternalLink } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Bookmark, Collection, Tag } from "../types";
@@ -9,7 +9,8 @@ type SortBy = "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_as
 type FilterBy = "all" | "has_images" | "has_summary" | "has_content";
 
 interface BookmarkListProps {
-  filteredBookmarks: Bookmark[];
+  bookmarks: Bookmark[];
+  total: number;
   viewMode: "list" | "grid";
   itemSize: "small" | "medium" | "large";
   selectedBookmarkIds: Set<string>;
@@ -34,10 +35,44 @@ interface BookmarkListProps {
   onBulkDelete: () => void;
   onBulkRefresh: () => void;
   onDismissInspector?: () => void;
+  onLoadMore?: () => void;
+  hasNextPage?: boolean;
+  isFetchingNextPage?: boolean;
+}
+
+function SkeletonCard({ viewMode, itemSize }: { viewMode: "list" | "grid"; itemSize: "small" | "medium" | "large" }) {
+  if (viewMode === "list") {
+    return (
+      <div className={cn(
+        "flex items-center gap-3 bg-white border border-slate-200 rounded-lg p-2 animate-pulse",
+        itemSize === "small" ? "p-2 gap-3" : itemSize === "large" ? "p-4 gap-5" : "p-3 gap-4"
+      )}>
+        <div className={cn(
+          "bg-slate-200 rounded-md flex-shrink-0",
+          itemSize === "small" ? "w-8 h-8" : itemSize === "large" ? "w-16 h-16" : "w-12 h-12"
+        )} />
+        <div className="flex-1 min-w-0">
+          <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+          <div className="h-3 bg-slate-200 rounded w-1/2" />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col bg-white border border-slate-200 rounded-lg overflow-hidden animate-pulse">
+      <div className="w-full aspect-video bg-slate-200" />
+      <div className={cn("p-3", itemSize === "small" ? "p-2" : itemSize === "large" ? "p-4" : "p-3")}>
+        <div className="h-4 bg-slate-200 rounded w-3/4 mb-2" />
+        <div className="h-3 bg-slate-200 rounded w-1/2 mb-2" />
+        <div className="h-3 bg-slate-200 rounded w-2/3" />
+      </div>
+    </div>
+  );
 }
 
 export function BookmarkList({
-  filteredBookmarks,
+  bookmarks,
+  total,
   viewMode,
   itemSize,
   selectedBookmarkIds,
@@ -62,17 +97,35 @@ export function BookmarkList({
   onBulkDelete,
   onBulkRefresh,
   onDismissInspector,
+  onLoadMore,
+  hasNextPage,
+  isFetchingNextPage,
 }: BookmarkListProps) {
-  const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
-    const ids = selectedBookmarkIds.has(id)
-      ? Array.from(selectedBookmarkIds)
-      : [id];
-    e.dataTransfer.setData(BOOKMARK_DRAG_TYPE, JSON.stringify(ids));
-    e.dataTransfer.effectAllowed = "copy";
-  }, [selectedBookmarkIds]);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
-  const allSelected = filteredBookmarks.length > 0 && selectedBookmarkIds.size === filteredBookmarks.length;
-  const someSelected = selectedBookmarkIds.size > 0 && selectedBookmarkIds.size < filteredBookmarks.length;
+  const handleIntersection = useCallback(
+    (entries: IntersectionObserverEntry[]) => {
+      if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
+        onLoadMore?.();
+      }
+    },
+    [hasNextPage, isFetchingNextPage, onLoadMore]
+  );
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(handleIntersection, {
+      root: null,
+      rootMargin: "200px",
+      threshold: 0,
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [handleIntersection]);
+
+  const allSelected = bookmarks.length > 0 && selectedBookmarkIds.size === bookmarks.length;
+  const someSelected = selectedBookmarkIds.size > 0 && selectedBookmarkIds.size < bookmarks.length;
   const selectedCollectionName = selectedCollectionId
     ? collections.find((c) => c.id === selectedCollectionId)?.name
     : undefined;
@@ -96,7 +149,7 @@ export function BookmarkList({
           <div className="flex items-center gap-2 text-lg font-semibold whitespace-nowrap">
             {selectedCollectionName ?? selectedTagName ?? selectedDomain ?? "All Bookmarks"}
             <span className="text-sm font-normal text-slate-400 ml-2">
-              {filteredBookmarks.length}
+              {total}
             </span>
           </div>
         </div>
@@ -218,7 +271,7 @@ export function BookmarkList({
         className="flex-1 overflow-y-auto p-4"
         onClick={onDismissInspector}
       >
-        {filteredBookmarks.length === 0 ? (
+        {bookmarks.length === 0 && !isFetchingNextPage ? (
           <div className="h-full flex flex-col items-center justify-center text-slate-400">
             <Globe size={48} className="mb-4 opacity-20" />
             <p>No bookmarks found.</p>
@@ -233,7 +286,7 @@ export function BookmarkList({
                 : "flex flex-col gap-2",
             )}
           >
-            {filteredBookmarks.map((bookmark) => (
+            {bookmarks.map((bookmark) => (
               <BookmarkItem
                 key={bookmark.id}
                 bookmark={bookmark}
@@ -244,11 +297,24 @@ export function BookmarkList({
                 isChecked={selectedBookmarkIds.has(bookmark.id)}
                 onSelect={onSelectBookmark}
                 onToggleSelection={onToggleBookmarkSelection}
-                onDragStart={handleDragStart}
+                onDragStart={(e, id) => {
+                  const ids = selectedBookmarkIds.has(id)
+                    ? Array.from(selectedBookmarkIds)
+                    : [id];
+                  e.dataTransfer.setData(BOOKMARK_DRAG_TYPE, JSON.stringify(ids));
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
               />
+            ))}
+            {isFetchingNextPage && Array.from({ length: 3 }).map((_, i) => (
+              <React.Fragment key={`skeleton-${i}`}>
+                <SkeletonCard viewMode={viewMode} itemSize={itemSize} />
+              </React.Fragment>
             ))}
           </div>
         )}
+
+        <div ref={sentinelRef} className="h-4" />
       </div>
     </div>
   );

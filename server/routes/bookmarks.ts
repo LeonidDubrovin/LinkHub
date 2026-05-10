@@ -17,7 +17,7 @@ import {
   softDeleteBookmark,
   bulkSoftDeleteBookmarks,
   validateCollectionIds,
-  buildFilteredBookmarksQuery,
+  buildPaginatedBookmarksQuery,
 } from "../utils/api.ts";
 
 const router = express.Router();
@@ -65,14 +65,36 @@ router.get("/domains", (req, res) => {
 });
 
 router.get("/bookmarks", (req, res) => {
-  const { collectionIds, spaceId, categoryId, tagId, domain } = req.query;
+  const { collectionIds, spaceId, categoryId, tagId, domain, page, limit, q, sort, filter } = req.query;
   let collIds: string[] = [];
   if (collectionIds) collIds = String(collectionIds).split(',').filter(Boolean);
   else if (categoryId) collIds = [String(categoryId)];
 
-  const { query, params } = buildFilteredBookmarksQuery(collIds, spaceId as string | undefined, tagId as string | undefined, domain as string | undefined);
-  const bookmarks = getBookmarksWithRelations(query, params);
-  res.json(bookmarks);
+  const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 30));
+  const offset = (pageNum - 1) * limitNum;
+
+  const { dataQuery, countQuery, params, countParams } = buildPaginatedBookmarksQuery(
+    collIds,
+    spaceId as string | undefined,
+    tagId as string | undefined,
+    domain as string | undefined,
+    q as string | undefined,
+    filter as string | undefined,
+    sort as string | undefined,
+    limitNum,
+    offset
+  );
+
+  const bookmarks = getBookmarksWithRelations(dataQuery, params);
+  const countResult = db.prepare(countQuery).get(...countParams) as { total: number };
+
+  res.json({
+    data: bookmarks,
+    total: countResult?.total ?? 0,
+    page: pageNum,
+    limit: limitNum,
+  });
 });
 
 router.get("/bookmarks/:id", async (req, res) => {
@@ -181,40 +203,68 @@ router.delete("/bookmarks/:id", (req, res) => {
 
 router.get("/trash", (req, res) => {
   try {
-    const bookmarks = db.prepare(`
-      SELECT b.*, c.name as category_name, c.color as category_color
-      FROM bookmarks b
-      LEFT JOIN categories c ON b.category_id = c.id
-      WHERE b.is_deleted = 1
-      ORDER BY b.updated_at DESC
-    `).all() as any[];
-    const bookmarkIds = bookmarks.map(b => b.id);
-    if (bookmarkIds.length === 0) { res.json([]); return; }
+    const { page, limit, q, sort } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 30));
+    const offset = (pageNum - 1) * limitNum;
 
-    const chunkSize = 500;
-    const allCollections: any[] = [];
-    for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
-      const chunk = bookmarkIds.slice(i, i + chunkSize);
-      const placeholders = chunk.map(() => '?').join(',');
-      allCollections.push(...db.prepare(`
-        SELECT bc.bookmark_id, col.* FROM bookmark_collections bc
-        JOIN collections col ON bc.collection_id = col.id
-        WHERE bc.bookmark_id IN (${placeholders})
-      `).all(...chunk) as any[]);
+    let where = "WHERE b.is_deleted = 1";
+    const params: any[] = [];
+
+    if (q && String(q).trim()) {
+      where += " AND (b.title LIKE ? OR b.description LIKE ? OR b.url LIKE ?)";
+      const pattern = `%${String(q).trim()}%`;
+      params.push(pattern, pattern, pattern);
     }
 
-    const collectionsByBookmarkId = allCollections.reduce((acc: any, row: any) => {
-      if (!acc[row.bookmark_id]) acc[row.bookmark_id] = [];
-      const { bookmark_id, ...coll } = row;
-      acc[row.bookmark_id].push(coll);
-      return acc;
-    }, {} as Record<string, any[]>);
+    let orderBy = " ORDER BY b.updated_at DESC";
+    switch (sort) {
+      case "date_asc": orderBy = " ORDER BY b.updated_at ASC"; break;
+      case "title_asc": orderBy = " ORDER BY b.title ASC, b.url ASC"; break;
+      case "title_desc": orderBy = " ORDER BY b.title DESC, b.url DESC"; break;
+      case "domain_asc": orderBy = " ORDER BY b.domain ASC"; break;
+      case "domain_desc": orderBy = " ORDER BY b.domain DESC"; break;
+    }
 
-    res.json(bookmarks.map(b => ({
-      ...b,
-      tags: [],
-      collections: collectionsByBookmarkId[b.id] || []
-    })));
+    const dataQuery = `SELECT b.*, c.name as category_name, c.color as category_color FROM bookmarks b LEFT JOIN categories c ON b.category_id = c.id ${where}${orderBy} LIMIT ? OFFSET ?`;
+    const countQuery = `SELECT COUNT(*) as total FROM bookmarks b LEFT JOIN categories c ON b.category_id = c.id ${where}`;
+
+    const bookmarks = db.prepare(dataQuery).all(...params, limitNum, offset) as any[];
+    const countResult = db.prepare(countQuery).get(...params) as { total: number };
+    const bookmarkIds = bookmarks.map(b => b.id);
+
+    let collectionsByBookmarkId: Record<string, any[]> = {};
+    if (bookmarkIds.length > 0) {
+      const chunkSize = 500;
+      const allCollections: any[] = [];
+      for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
+        const chunk = bookmarkIds.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => '?').join(',');
+        allCollections.push(...db.prepare(`
+          SELECT bc.bookmark_id, col.* FROM bookmark_collections bc
+          JOIN collections col ON bc.collection_id = col.id
+          WHERE bc.bookmark_id IN (${placeholders})
+        `).all(...chunk) as any[]);
+      }
+
+      collectionsByBookmarkId = allCollections.reduce((acc: any, row: any) => {
+        if (!acc[row.bookmark_id]) acc[row.bookmark_id] = [];
+        const { bookmark_id, ...coll } = row;
+        acc[row.bookmark_id].push(coll);
+        return acc;
+      }, {} as Record<string, any[]>);
+    }
+
+    res.json({
+      data: bookmarks.map(b => ({
+        ...b,
+        tags: [],
+        collections: collectionsByBookmarkId[b.id] || []
+      })),
+      total: countResult?.total ?? 0,
+      page: pageNum,
+      limit: limitNum,
+    });
   } catch (error: any) {
     internalError(res, error);
   }
