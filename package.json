@@ -41,7 +41,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/icon.png",
@@ -64,6 +66,8 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "openai": "^6.32.0",
+    "react-arborist": "^3.5.0",
+    "react-dnd-touch-backend": "^14.1.1",
     "tldts": "^7.0.25",
     "uuid": "^13.0.0"
   },

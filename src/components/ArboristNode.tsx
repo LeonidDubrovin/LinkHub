@@ -1,0 +1,120 @@
+import React from "react";
+import { ChevronRight, Plus } from "lucide-react";
+import { Icon } from "./Icon";
+import { cn } from "../lib/utils";
+import { ArboristNodeData } from "../utils/arboristData";
+import { NodeRendererProps } from "react-arborist";
+import { Collection } from "../types";
+
+interface ArboristNodeProps extends NodeRendererProps<ArboristNodeData> {
+  onSelectCollection: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent, coll: Collection) => void;
+  onCreateCollection: (spaceId: string) => void;
+}
+
+export const ArboristNode = React.memo(function ArboristNode({
+  node,
+  style,
+  dragHandle,
+  onSelectCollection,
+  onContextMenu,
+  onCreateCollection,
+}: ArboristNodeProps) {
+  const data = node.data;
+
+  if (data.isGroup) {
+    return (
+      <div style={style} className="flex items-center justify-between px-3 py-1">
+        <div className="flex items-center gap-1 min-w-0">
+          <span
+            onClick={(e) => { e.stopPropagation(); node.toggle(); }}
+            className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer"
+          >
+            <ChevronRight
+              size={14}
+              className={cn("transition-transform duration-150", node.isOpen && "rotate-90")}
+            />
+          </span>
+          <span className="text-xs font-semibold uppercase text-slate-500 tracking-wide truncate">
+            {data.name}
+          </span>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreateCollection(data.space_id);
+          }}
+          className="text-xs text-slate-400 hover:text-blue-600 transition-colors flex items-center gap-0.5 flex-shrink-0"
+          title="New collection"
+        >
+          <Plus size={12} /> Collection
+        </button>
+      </div>
+    );
+  }
+
+  const isSelected = node.isSelected;
+  const isDragging = node.isDragging;
+  const willReceiveDrop = node.willReceiveDrop;
+  const isCustomIcon = !!data.icon && data.icon !== "Folder";
+  const iconColor = isCustomIcon
+    ? data.color
+    : isSelected
+      ? "#94a3b8"
+      : "#cbd5e1";
+
+  const collection: Collection = {
+    id: data.id,
+    name: data.name,
+    icon: data.icon,
+    color: data.color,
+    space_id: data.space_id,
+    parent_id: node.parent?.id?.startsWith("group:") ? null : node.parent?.id ?? null,
+    sort_order: 0,
+    created_at: "",
+    bookmarkCount: data.bookmarkCount,
+  };
+
+  return (
+    <div
+      ref={dragHandle}
+      style={style}
+      className={cn(
+        "flex items-center gap-2 py-1.5 rounded-md text-sm mb-px select-none cursor-pointer",
+        isDragging && "opacity-40",
+        isSelected
+          ? "bg-blue-100 text-blue-700 font-medium"
+          : willReceiveDrop
+            ? "bg-blue-50 ring-2 ring-blue-400 ring-offset-[-1px]"
+            : "hover:bg-slate-100 text-slate-700"
+      )}
+      onClick={() => onSelectCollection(data.id)}
+      onContextMenu={(e) => onContextMenu(e, collection)}
+    >
+      {node.isInternal && !data.isGroup && (node.children?.length ?? 0) > 0 ? (
+        <span
+          onClick={(e) => {
+            e.stopPropagation();
+            node.toggle();
+          }}
+          className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600"
+        >
+          <ChevronRight
+            size={14}
+            className={cn(
+              "transition-transform duration-150",
+              node.isOpen && "rotate-90"
+            )}
+          />
+        </span>
+      ) : (
+        <span className="w-4 h-4 flex-shrink-0" />
+      )}
+      <Icon name={data.icon} size={16} color={iconColor} />
+      <span className="truncate flex-1">{data.name}</span>
+      {!data.isGroup && (
+        <span className="text-xs text-slate-400">{data.bookmarkCount}</span>
+      )}
+    </div>
+  );
+});

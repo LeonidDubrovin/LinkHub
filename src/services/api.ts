@@ -52,7 +52,7 @@ export const apiClient = {
       apiClient.get<Collection[]>(`/api/collections${spaceId ? `?spaceId=${spaceId}` : ""}`),
     create: (data: { name: string; space_id: string; icon?: string; color?: string | null; parent_id?: string | null }) =>
       apiClient.post<Collection>("/api/collections", data),
-    update: (id: string, data: { name?: string; icon?: string; color?: string | null; parent_id?: string | null; sort_order?: number }) =>
+    update: (id: string, data: { name?: string; icon?: string; color?: string | null; parent_id?: string | null; sort_order?: number; space_id?: string }) =>
       apiClient.put<Collection>(`/api/collections/${id}`, data),
     reorder: (orders: string[]) =>
       apiClient.put<{ success: boolean }>("/api/collections/reorder", { orders }),
@@ -84,10 +84,22 @@ export const apiClient = {
       apiClient.del<{ success: boolean }>(`/api/bookmarks/${id}`),
     bulkDelete: (ids: string[]) =>
       apiClient.post<{ success: boolean }>("/api/bookmarks/bulk-delete", { ids }),
+    listTrash: () =>
+      apiClient.get<Bookmark[]>("/api/trash"),
+    restoreFromTrash: (id: string) =>
+      apiClient.post<Bookmark>(`/api/trash/${id}/restore`, {}),
+    permanentlyDelete: (id: string) =>
+      apiClient.del<{ success: boolean }>(`/api/trash/${id}`),
   },
 
   spaces: {
     list: () => apiClient.get<Space[]>("/api/spaces"),
+    create: (data: { name: string; icon?: string; color?: string }) =>
+      apiClient.post<Space>("/api/spaces", data),
+    update: (id: string, data: { name?: string; icon?: string; color?: string }) =>
+      apiClient.put<Space>(`/api/spaces/${id}`, data),
+    delete: (id: string) =>
+      apiClient.del<{ success: boolean }>(`/api/spaces/${id}`),
   },
 
   tags: {

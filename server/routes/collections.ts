@@ -51,11 +51,11 @@ router.post("/collections", (req, res) => {
 router.put("/collections/:id", (req, res) => {
   try {
     const { id } = req.params;
-    const { name, icon, color, parent_id, sort_order } = req.body;
+    const { name, icon, color, parent_id, sort_order, space_id } = req.body;
     const existing = db.prepare("SELECT * FROM collections WHERE id = ?").get(id) as any;
     if (!existing) return notFound(res, "Collection not found");
-    db.prepare("UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ?, sort_order = ? WHERE id = ?")
-      .run(name ?? existing.name, icon ?? existing.icon, color ?? existing.color, parent_id !== undefined ? (parent_id || null) : existing.parent_id, sort_order !== undefined ? sort_order : existing.sort_order, id);
+    db.prepare("UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ?, sort_order = ?, space_id = ? WHERE id = ?")
+      .run(name ?? existing.name, icon ?? existing.icon, color ?? existing.color, parent_id !== undefined ? (parent_id || null) : existing.parent_id, sort_order !== undefined ? sort_order : existing.sort_order, space_id ?? existing.space_id, id);
     const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
     if (!collection) return notFound(res, "Collection not found");
     sendJson(res, collection);

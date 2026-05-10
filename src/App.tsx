@@ -30,8 +30,37 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  const [isViewingTrash, setIsViewingTrash] = useState(false);
   const [isEditingCollections, setIsEditingCollections] = useState(false);
   const [selectedCollectionIdsForEdit, setSelectedCollectionIdsForEdit] = useState<string[]>([]);
+  const [isCreatingGroup, setIsCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("sidebarWidth");
+    return saved ? parseInt(saved, 10) : 256;
+  });
+  const [isSidebarDragging, setIsSidebarDragging] = useState(false);
+
+  useEffect(() => {
+    if (!isSidebarDragging) {
+      localStorage.setItem("sidebarWidth", sidebarWidth.toString());
+    }
+  }, [isSidebarDragging, sidebarWidth]);
+
+  useEffect(() => {
+    if (!isSidebarDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = Math.max(180, Math.min(400, e.clientX));
+      setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => setIsSidebarDragging(false);
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isSidebarDragging]);
 
   const api = useApi(setToast);
   const ui = useUI();
@@ -52,20 +81,49 @@ export default function App() {
   useEffect(() => { api.initialize(); }, []);
 
   useEffect(() => {
-    bm.fetchBookmarks(selectedCollectionId, null, selectedDomain);
+    if (isViewingTrash) {
+      apiClient.bookmarks.listTrash().then((data) => {
+        bm.setBookmarks(Array.isArray(data) ? data : []);
+      });
+    } else {
+      bm.fetchBookmarks(selectedCollectionId, null, selectedDomain);
+    }
     bm.setSelectedBookmark(null);
     insp.setIsInspectorOpen(false);
     insp.setReaderContent(null);
-  }, [selectedCollectionId, selectedDomain]);
+  }, [selectedCollectionId, selectedDomain, isViewingTrash]);
 
   const handleSelectCollection = useCallback((id: string | null) => {
     setSelectedCollectionId(id);
     if (id) setSelectedDomain(null);
+    setIsViewingTrash(false);
   }, []);
   const handleSelectDomain = useCallback((d: string | null) => {
     setSelectedDomain(d);
     if (d) setSelectedCollectionId(null);
+    setIsViewingTrash(false);
   }, []);
+  const handleSelectTrash = useCallback(() => {
+    setIsViewingTrash(true);
+    setSelectedCollectionId(null);
+    setSelectedDomain(null);
+  }, []);
+
+  const handleCreateGroup = useCallback(async () => {
+    if (!newGroupName.trim()) {
+      setToast({ message: "Please enter a name", type: "error" });
+      return;
+    }
+    try {
+      await apiClient.spaces.create({ name: newGroupName.trim() });
+      setNewGroupName("");
+      setIsCreatingGroup(false);
+      await api.fetchSpaces();
+      setToast({ message: "Group created", type: "success" });
+    } catch {
+      setToast({ message: "Failed to create group", type: "error" });
+    }
+  }, [newGroupName, api.fetchSpaces]);
 
   useEffect(() => {
     if (bm.selectedBookmark) {
@@ -228,26 +286,34 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", insp.isDragging && "select-none cursor-col-resize")}>
+      <div className={cn("flex h-screen w-full bg-[#f8f9fa] text-slate-800 font-sans overflow-hidden", (insp.isDragging || isSidebarDragging) && "select-none", insp.isDragging && "cursor-col-resize", isSidebarDragging && "cursor-col-resize")}>
         <Sidebar
-          treeSpaces={coll.treeSpaces}
+          arboristData={coll.arboristData}
           domains={api.domains}
           pinnedDomains={ui.pinnedDomains}
           selectedCollectionId={selectedCollectionId}
           selectedDomain={selectedDomain}
+          isViewingTrash={isViewingTrash}
           isCreatingCollection={coll.isCreatingCollection}
+          isCreatingGroup={isCreatingGroup}
           newCollectionName={coll.newCollectionName}
+          newGroupName={newGroupName}
           setIsCreatingCollection={coll.setIsCreatingCollection}
           setNewCollectionName={coll.setNewCollectionName}
           handleCreateCollection={coll.handleCreateCollection}
+          createCollectionSpaceId={coll.createCollectionSpaceId}
+          setCreateCollectionSpaceId={coll.setCreateCollectionSpaceId}
+          setIsCreatingGroup={setIsCreatingGroup}
+          setNewGroupName={setNewGroupName}
+          handleCreateGroup={handleCreateGroup}
           onSelectCollection={handleSelectCollection}
           onSelectDomain={handleSelectDomain}
+          onSelectTrash={handleSelectTrash}
           togglePinDomain={ui.togglePinDomain}
           onCollectionContextMenu={coll.handleContextMenu}
-          dropTargetCollectionId={coll.dropTargetCollectionId}
-          dropPosition={coll.dropPosition}
-          draggedCollectionId={coll.draggedCollectionId}
-          dragHandlers={coll.dragHandlers}
+          onArboristMove={coll.handleArboristMove}
+          sidebarWidth={sidebarWidth}
+          onSidebarResizeStart={() => setIsSidebarDragging(true)}
           setIsSettingsOpen={setIsSettingsOpen}
           setIsAdding={bm.setIsAdding}
         />

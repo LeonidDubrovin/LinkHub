@@ -22,6 +22,9 @@ export default defineConfig(({ mode }) => {
         usePolling: false,
       },
     },
+    optimizeDeps: {
+      include: ['react-arborist'],
+    },
     build: {
       outDir: 'dist',
       rollupOptions: {

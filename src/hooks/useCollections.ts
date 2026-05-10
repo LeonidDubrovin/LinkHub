@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { Collection, SpaceWithCollections } from "../types";
 import { apiClient, ApiError } from "../services/api";
 import { buildCollectionTree } from "../utils/buildCollectionTree";
-import { DropPosition } from "../components/CollectionTree";
+import { ArboristNodeData, transformToArboristData } from "../utils/arboristData";
 
 type ToastFn = (toast: { message: string; type: "success" | "error" | "info" } | null) => void;
 
@@ -13,15 +13,12 @@ export function useCollections(
   setToast: ToastFn,
   onCollectionDeleted?: (collectionId: string) => void
 ) {
-  const [draggedCollectionId, setDraggedCollectionId] = useState<string | null>(null);
-  const draggedCollectionIdRef = useRef<string | null>(null);
-  const [dropTargetCollectionId, setDropTargetCollectionId] = useState<string | null>(null);
-  const [dropPosition, setDropPosition] = useState<DropPosition | null>(null);
   const [contextMenu, setContextMenu] = useState<{ collection: Collection; position: { x: number; y: number } } | null>(null);
   const [renamingCollection, setRenamingCollection] = useState<Collection | null>(null);
   const [iconPickerCollection, setIconPickerCollection] = useState<Collection | null>(null);
   const [isCreatingCollection, setIsCreatingCollection] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [createCollectionSpaceId, setCreateCollectionSpaceId] = useState<string | null>(null);
 
   const isDescendant = useCallback(
     (candidateAncestorId: string, descendantId: string): boolean => {
@@ -77,8 +74,9 @@ export function useCollections(
         setToast({ message: "Please enter a name", type: "error" });
         return;
       }
-      const inboxSpace = spaces.find((s) => s.id === "inbox-space");
-      const targetSpace = inboxSpace || spaces[0];
+      const targetSpace = createCollectionSpaceId
+        ? spaces.find((s) => s.id === createCollectionSpaceId)
+        : spaces.find((s) => s.id === "inbox-space") || spaces[0];
       if (!targetSpace) {
         setToast({ message: "No space available. Please reload the page.", type: "error" });
         return;
@@ -90,6 +88,7 @@ export function useCollections(
         });
         setNewCollectionName("");
         setIsCreatingCollection(false);
+        setCreateCollectionSpaceId(null);
         await fetchCollections();
         setToast({ message: "Collection created", type: "success" });
       } catch (error) {
@@ -97,7 +96,7 @@ export function useCollections(
         setToast({ message: msg, type: "error" });
       }
     },
-    [newCollectionName, spaces, fetchCollections, setToast]
+    [newCollectionName, createCollectionSpaceId, spaces, fetchCollections, setToast]
   );
 
   const handleDeleteCollection = useCallback(
@@ -117,7 +116,7 @@ export function useCollections(
   );
 
   const handleMoveCollection = useCallback(
-    async (draggedId: string, targetId: string | null, position: DropPosition) => {
+    async (draggedId: string, targetId: string | null, position: "before" | "after" | "into", targetSpaceId?: string) => {
       if (draggedId === "inbox-collection") {
         setToast({ message: "Cannot move system collections", type: "error" });
         return;
@@ -131,10 +130,12 @@ export function useCollections(
       const draggedColl = collections.find((c) => c.id === draggedId);
       if (!draggedColl) { setToast({ message: "Collection not found", type: "error" }); return; }
 
+      const destSpaceId = targetSpaceId || draggedColl.space_id;
+
       try {
         if (!targetId) {
           const rootSiblings = collections.filter(
-            (c) => c.space_id === draggedColl.space_id && !c.parent_id
+            (c) => c.space_id === destSpaceId && !c.parent_id
           );
           const maxSort = rootSiblings.reduce((max, c) => Math.max(max, c.sort_order ?? 0), 0);
           await apiClient.collections.update(draggedId, {
@@ -143,8 +144,11 @@ export function useCollections(
             color: draggedColl.color,
             parent_id: null,
             sort_order: maxSort + 1,
+            space_id: destSpaceId,
           });
         } else if (position === "into") {
+          const target = collections.find((c) => c.id === targetId);
+          if (!target) { setToast({ message: "Target not found", type: "error" }); return; }
           const targetChildren = collections.filter((c) => c.parent_id === targetId);
           const maxSort = targetChildren.reduce((max, c) => Math.max(max, c.sort_order ?? 0), -1);
           await apiClient.collections.update(draggedId, {
@@ -153,6 +157,7 @@ export function useCollections(
             color: draggedColl.color,
             parent_id: targetId,
             sort_order: maxSort + 1,
+            space_id: target.space_id,
           });
         } else {
           const target = collections.find((c) => c.id === targetId);
@@ -185,6 +190,7 @@ export function useCollections(
             color: draggedColl.color,
             parent_id: target.parent_id,
             sort_order: newSortOrder,
+            space_id: target.space_id,
           });
         }
 
@@ -193,11 +199,84 @@ export function useCollections(
       } catch (error) {
         const msg = error instanceof ApiError ? error.message : "Failed to move collection";
         setToast({ message: msg, type: "error" });
-      } finally {
-        draggedCollectionIdRef.current = null;
-        setDraggedCollectionId(null);
-        setDropTargetCollectionId(null);
-        setDropPosition(null);
+      }
+    },
+    [collections, fetchCollections, isDescendant, setToast]
+  );
+
+  const handleArboristMove = useCallback(
+    async (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => {
+      const draggedId = args.dragIds[0];
+      if (!draggedId) return;
+
+      if (draggedId === "inbox-collection") {
+        setToast({ message: "Cannot move system collections", type: "error" });
+        return;
+      }
+
+      const draggedColl = collections.find((c) => c.id === draggedId);
+      if (!draggedColl) return;
+
+      let realParentId: string | null;
+      let destSpaceId: string;
+
+      if (!args.parentId) {
+        realParentId = null;
+        destSpaceId = draggedColl.space_id;
+      } else if (args.parentId.startsWith("group:")) {
+        realParentId = null;
+        destSpaceId = args.parentId.replace("group:", "");
+      } else {
+        realParentId = args.parentId;
+        const parentColl = collections.find((c) => c.id === args.parentId);
+        if (!parentColl) return;
+
+        if (isDescendant(draggedId, args.parentId)) {
+          setToast({ message: "Cannot move collection into its own descendant", type: "error" });
+          return;
+        }
+        destSpaceId = parentColl.space_id;
+      }
+
+      const siblings = collections
+        .filter(
+          (c) =>
+            c.space_id === destSpaceId &&
+            c.parent_id === realParentId &&
+            c.id !== draggedId
+        )
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+
+      const insertIndex = Math.min(args.index, siblings.length);
+      let newSortOrder: number;
+
+      if (siblings.length === 0) {
+        newSortOrder = 0;
+      } else if (insertIndex === 0) {
+        newSortOrder = (siblings[0].sort_order ?? 0) - 1;
+      } else if (insertIndex >= siblings.length) {
+        newSortOrder = (siblings[siblings.length - 1].sort_order ?? 0) + 1;
+      } else {
+        newSortOrder =
+          ((siblings[insertIndex - 1].sort_order ?? 0) +
+            (siblings[insertIndex].sort_order ?? 0)) /
+          2;
+      }
+
+      try {
+        await apiClient.collections.update(draggedId, {
+          name: draggedColl.name,
+          icon: draggedColl.icon,
+          color: draggedColl.color,
+          parent_id: realParentId,
+          sort_order: newSortOrder,
+          space_id: destSpaceId,
+        });
+        await fetchCollections();
+        setToast({ message: "Collection moved", type: "success" });
+      } catch (error) {
+        const msg = error instanceof ApiError ? error.message : "Failed to move collection";
+        setToast({ message: msg, type: "error" });
       }
     },
     [collections, fetchCollections, isDescendant, setToast]
@@ -280,61 +359,9 @@ export function useCollections(
     }));
   }, [spaces, collections]);
 
-  const dragHandlers = useMemo(
-    () => ({
-      onDragStart: (e: React.DragEvent, collId: string) => {
-        e.stopPropagation();
-        draggedCollectionIdRef.current = collId;
-        setDraggedCollectionId(collId);
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", collId);
-      },
-      onDragOver: (e: React.DragEvent, collId: string, position: DropPosition) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const draggedId = draggedCollectionIdRef.current;
-        if (!draggedId || draggedId === collId) return;
-        if (position === "into" && isDescendant(draggedId, collId)) return;
-        setDropTargetCollectionId(collId);
-        setDropPosition(position);
-      },
-      onDrop: (e: React.DragEvent, collId: string, position: DropPosition) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const draggedId = draggedCollectionIdRef.current;
-        if (draggedId && draggedId !== collId) {
-          handleMoveCollection(draggedId, collId, position);
-        } else {
-          draggedCollectionIdRef.current = null;
-          setDraggedCollectionId(null);
-          setDropTargetCollectionId(null);
-          setDropPosition(null);
-        }
-      },
-      onDragEnd: () => {
-        draggedCollectionIdRef.current = null;
-        setDraggedCollectionId(null);
-        setDropTargetCollectionId(null);
-        setDropPosition(null);
-      },
-      onContainerLeave: () => {
-        setDropTargetCollectionId(null);
-        setDropPosition(null);
-      },
-      onRootDrop: (e: React.DragEvent) => {
-        e.preventDefault();
-        const draggedId = draggedCollectionIdRef.current;
-        if (draggedId) {
-          handleMoveCollection(draggedId, null, "after");
-        }
-      },
-      onRootDragOver: (e: React.DragEvent) => {
-        e.preventDefault();
-        setDropTargetCollectionId(null);
-        setDropPosition(null);
-      },
-    }),
-    [isDescendant, handleMoveCollection]
+  const arboristData = useMemo(
+    () => transformToArboristData(spaces, collections),
+    [spaces, collections]
   );
 
   return {
@@ -348,16 +375,17 @@ export function useCollections(
     setIsCreatingCollection,
     newCollectionName,
     setNewCollectionName,
-    dropTargetCollectionId,
-    dropPosition,
-    draggedCollectionId,
+    createCollectionSpaceId,
+    setCreateCollectionSpaceId,
 
     treeSpaces,
+    arboristData,
 
     handleCreateCollection,
     handleDeleteCollection: handleDeleteCollection,
     handleUpdateCollection,
     handleMoveCollection,
+    handleArboristMove,
     handleMoveCollectionUp,
     handleMoveCollectionDown,
     handleMoveCollectionOut,
@@ -366,6 +394,5 @@ export function useCollections(
     handleChangeIconSubmit,
     getSiblings,
     isDescendant,
-    dragHandlers,
   };
 }

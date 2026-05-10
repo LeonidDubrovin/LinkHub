@@ -170,13 +170,19 @@ const catCount = db
     try {
       console.log("Running spaces & collections migration (idempotent)...");
       db.transaction(() => {
-        // 1. Create Inbox space (system) - the only default space
-        db.prepare("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
-          .run('inbox-space', 'Inbox', 'Inbox', '#6b7280');
+         // 1. Create General space (system default)
+         db.prepare("INSERT OR IGNORE INTO spaces (id, name, icon, color) VALUES (?, ?, ?, ?)")
+           .run('inbox-space', 'General', 'Folder', '#6b7280');
 
-        // 2. Create Inbox collection in Inbox space (for unassigned bookmarks)
-        db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id) VALUES (?, ?, ?, ?, ?)")
-          .run('inbox-collection', 'Inbox', 'Inbox', '#6b7280', 'inbox-space');
+         db.prepare("UPDATE spaces SET name = 'General', icon = 'Folder' WHERE id = 'inbox-space' AND name = 'Inbox'")
+           .run();
+
+         // 2. Create Unsorted collection in General space (for uncategorized bookmarks)
+         db.prepare("INSERT OR IGNORE INTO collections (id, name, icon, color, space_id, sort_order) VALUES (?, ?, ?, ?, ?, ?)")
+           .run('inbox-collection', 'Unsorted', 'Inbox', '#6b7280', 'inbox-space', -1);
+
+         db.prepare("UPDATE collections SET name = 'Unsorted', sort_order = -1 WHERE id = 'inbox-collection' AND name = 'Inbox'")
+           .run();
 
         // 3. Migrate existing categories to collections (preserve IDs) - all go to Inbox space
         const oldCategories = db.prepare("SELECT * FROM categories").all() as any[];

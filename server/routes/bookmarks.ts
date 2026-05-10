@@ -11,6 +11,7 @@ import {
   sendError,
   notFound,
   badRequest,
+  internalError,
   getBookmarksWithRelations,
   getBookmarkWithRelations,
   softDeleteBookmark,
@@ -176,6 +177,71 @@ router.delete("/bookmarks/:id", (req, res) => {
   const { id } = req.params;
   softDeleteBookmark(id);
   sendJson(res, { success: true });
+});
+
+router.get("/trash", (req, res) => {
+  try {
+    const bookmarks = db.prepare(`
+      SELECT b.*, c.name as category_name, c.color as category_color
+      FROM bookmarks b
+      LEFT JOIN categories c ON b.category_id = c.id
+      WHERE b.is_deleted = 1
+      ORDER BY b.updated_at DESC
+    `).all() as any[];
+    const bookmarkIds = bookmarks.map(b => b.id);
+    if (bookmarkIds.length === 0) { res.json([]); return; }
+
+    const chunkSize = 500;
+    const allCollections: any[] = [];
+    for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
+      const chunk = bookmarkIds.slice(i, i + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      allCollections.push(...db.prepare(`
+        SELECT bc.bookmark_id, col.* FROM bookmark_collections bc
+        JOIN collections col ON bc.collection_id = col.id
+        WHERE bc.bookmark_id IN (${placeholders})
+      `).all(...chunk) as any[]);
+    }
+
+    const collectionsByBookmarkId = allCollections.reduce((acc: any, row: any) => {
+      if (!acc[row.bookmark_id]) acc[row.bookmark_id] = [];
+      const { bookmark_id, ...coll } = row;
+      acc[row.bookmark_id].push(coll);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    res.json(bookmarks.map(b => ({
+      ...b,
+      tags: [],
+      collections: collectionsByBookmarkId[b.id] || []
+    })));
+  } catch (error: any) {
+    internalError(res, error);
+  }
+});
+
+router.post("/trash/:id/restore", (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+    if (result.changes === 0) return notFound(res, "Bookmark not found");
+    const bookmark = getBookmarkWithRelations(id);
+    sendJson(res, bookmark);
+  } catch (error: any) {
+    internalError(res, error);
+  }
+});
+
+router.delete("/trash/:id", (req, res) => {
+  try {
+    const { id } = req.params;
+    db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
+    db.prepare("DELETE FROM bookmark_tags WHERE bookmark_id = ?").run(id);
+    db.prepare("DELETE FROM bookmarks WHERE id = ? AND is_deleted = 1").run(id);
+    sendJson(res, { success: true });
+  } catch (error: any) {
+    internalError(res, error);
+  }
 });
 
 router.post("/bookmarks/bulk-delete", (req, res) => {

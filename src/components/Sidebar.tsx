@@ -1,60 +1,155 @@
-import React, { useRef } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "../lib/utils";
-import { Globe, Settings, Plus, BookOpen } from "lucide-react";
-import { SpaceWithCollections, Domain, Collection } from "../types";
+import { Globe, Trash2, Settings, Plus, BookOpen } from "lucide-react";
+import { Domain, Collection } from "../types";
 import { DomainItem } from "./DomainItem";
-import { CollectionTree, DragHandlers, DropPosition } from "./CollectionTree";
+import { Tree } from "react-arborist";
+import { DndProvider, useDragDropManager } from "react-dnd";
+import { TouchBackend } from "react-dnd-touch-backend";
+import { ArboristNode } from "./ArboristNode";
+import { ArboristNodeData } from "../utils/arboristData";
 
 interface SidebarProps {
-  treeSpaces: SpaceWithCollections[];
+  arboristData: ArboristNodeData[];
   domains: Domain[];
   pinnedDomains: string[];
   selectedCollectionId: string | null;
   selectedDomain: string | null;
+  isViewingTrash: boolean;
   isCreatingCollection: boolean;
+  isCreatingGroup: boolean;
   newCollectionName: string;
+  newGroupName: string;
+  createCollectionSpaceId: string | null;
   setIsCreatingCollection: (v: boolean) => void;
   setNewCollectionName: (v: string) => void;
   handleCreateCollection: () => void;
+  setCreateCollectionSpaceId: (id: string | null) => void;
+  setIsCreatingGroup: (v: boolean) => void;
+  setNewGroupName: (v: string) => void;
+  handleCreateGroup: () => void;
   onSelectCollection: (id: string | null) => void;
   onSelectDomain: (domain: string | null) => void;
+  onSelectTrash: () => void;
   togglePinDomain: (domain: string, e: React.MouseEvent) => void;
   onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
-  dropTargetCollectionId: string | null;
-  dropPosition: DropPosition | null;
-  draggedCollectionId: string | null;
-  dragHandlers: DragHandlers;
+  onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
+  sidebarWidth: number;
+  onSidebarResizeStart: () => void;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
 }
 
+function CollectionTreeInner(props: {
+  arboristData: ArboristNodeData[];
+  selectedCollectionId: string | null;
+  treeHeight: number;
+  sidebarWidth: number;
+  onSelectCollection: (id: string | null) => void;
+  onCollectionContextMenu: (e: React.MouseEvent, coll: Collection) => void;
+  onArboristMove: (args: { dragIds: string[]; parentId: string | null; parentNode: any; index: number }) => void;
+  handleCreateCollectionForSpace: (spaceId: string) => void;
+}) {
+  const dndManager = useDragDropManager();
+
+  return (
+    <Tree<ArboristNodeData>
+      data={props.arboristData}
+      onMove={props.onArboristMove}
+      onSelect={(nodes) => {
+        const node = nodes[0];
+        if (node && !node.data.isGroup) {
+          props.onSelectCollection(node.id);
+        }
+      }}
+      selection={props.selectedCollectionId ?? undefined}
+      disableDrag={(data: ArboristNodeData) => data.isGroup || data.id === "inbox-collection"}
+      disableDrop={({ parentNode }: { parentNode: any; dragNodes: any[]; index: number }) => !parentNode}
+      disableEdit={true}
+      dndManager={dndManager}
+      width={props.sidebarWidth - 24}
+      height={props.treeHeight}
+      indent={12}
+      rowHeight={32}
+      openByDefault={true}
+      className="!overflow-y-auto !overflow-x-hidden"
+    >
+      {(nodeProps) => (
+        <ArboristNode
+          {...nodeProps}
+          onSelectCollection={(id) => props.onSelectCollection(id)}
+          onContextMenu={props.onCollectionContextMenu}
+          onCreateCollection={props.handleCreateCollectionForSpace}
+        />
+      )}
+    </Tree>
+  );
+}
+
 export function Sidebar({
-  treeSpaces,
+  arboristData,
   domains,
   pinnedDomains,
   selectedCollectionId,
   selectedDomain,
+  isViewingTrash,
   isCreatingCollection,
+  isCreatingGroup,
   newCollectionName,
+  newGroupName,
+  createCollectionSpaceId,
   setIsCreatingCollection,
   setNewCollectionName,
   handleCreateCollection,
+  setCreateCollectionSpaceId,
+  setIsCreatingGroup,
+  setNewGroupName,
+  handleCreateGroup,
   onSelectCollection,
   onSelectDomain,
+  onSelectTrash,
   togglePinDomain,
   onCollectionContextMenu,
-  dropTargetCollectionId,
-  dropPosition,
-  draggedCollectionId,
-  dragHandlers,
+  onArboristMove,
+  sidebarWidth,
+  onSidebarResizeStart,
   setIsSettingsOpen,
   setIsAdding,
 }: SidebarProps) {
-  const dragDepthRef = useRef(0);
+  const nothingSelected = !selectedCollectionId && !selectedDomain && !isViewingTrash;
+  const treeContainerRef = useRef<HTMLDivElement>(null);
+  const [treeHeight, setTreeHeight] = useState(400);
+
+  useEffect(() => {
+    if (!treeContainerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const h = Math.floor(entry.contentRect.height);
+        if (h > 0) setTreeHeight(h);
+      }
+    });
+    observer.observe(treeContainerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleCreateCollectionForSpace = useCallback(
+    (spaceId: string) => {
+      setCreateCollectionSpaceId(spaceId);
+      setIsCreatingCollection(true);
+      setNewCollectionName("");
+    },
+    [setCreateCollectionSpaceId, setIsCreatingCollection, setNewCollectionName]
+  );
+
+  const pinnedDomainItems = domains.filter((d) => pinnedDomains.includes(d.domain));
+  const otherDomainItems = domains.filter((d) => !pinnedDomains.includes(d.domain));
 
   return (
-    <div className="w-64 bg-[#f1f3f5] border-r border-slate-200 flex flex-col flex-shrink-0">
-      <div className="p-4 flex items-center justify-between">
+    <div
+      className="bg-[#f1f3f5] flex flex-col flex-shrink-0 relative"
+      style={{ width: `${sidebarWidth}px`, minWidth: '180px', maxWidth: '400px' }}
+    >
+      <div className="p-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2 font-semibold text-lg">
           <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center text-white">
             <BookOpen size={14} />
@@ -70,7 +165,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="px-3 pb-2">
+      <div className="px-3 pb-2 flex-shrink-0">
         <button
           onClick={() => setIsAdding(true)}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 px-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors"
@@ -79,157 +174,141 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
-        <div className="px-3 mb-4">
-          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-            Filters
+      <div className="px-3 mb-3 flex-shrink-0">
+        <button
+          onClick={() => { onSelectCollection(null); onSelectDomain(null); }}
+          className={cn(
+            "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
+            nothingSelected
+              ? "bg-blue-100 text-blue-700 font-medium"
+              : "hover:bg-slate-200 text-slate-700"
+          )}
+        >
+          <Globe size={16} className={nothingSelected ? "text-blue-600" : "text-slate-400"} />
+          All Bookmarks
+        </button>
+        <button
+          onClick={onSelectTrash}
+          className={cn(
+            "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
+            isViewingTrash
+              ? "bg-blue-100 text-blue-700 font-medium"
+              : "hover:bg-slate-200 text-slate-700"
+          )}
+        >
+          <Trash2 size={16} className={isViewingTrash ? "text-blue-600" : "text-slate-400"} />
+          Trash
+        </button>
+      </div>
+
+      <div className="px-3 mb-1 flex-shrink-0">
+        <div className="flex items-center justify-between px-2 mb-1">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Groups
           </div>
           <button
-            onClick={() => { onSelectCollection(null); onSelectDomain(null); }}
-            className={cn(
-              "w-full flex items-center gap-3 px-2 py-1.5 rounded-md text-sm",
-              !selectedCollectionId && !selectedDomain
-                ? "bg-blue-100 text-blue-700 font-medium"
-                : "hover:bg-slate-200 text-slate-700",
-            )}
+            onClick={() => setIsCreatingGroup(true)}
+            className="text-[10px] text-slate-400 hover:text-blue-500 transition-colors"
+            title="New group"
           >
-            <Globe
-              size={16}
-              className={
-                !selectedCollectionId && !selectedDomain
-                  ? "text-blue-600"
-                  : "text-slate-400"
-              }
-            />
-            All Bookmarks
+            + Group
           </button>
         </div>
-
-        <div className="px-3 mb-4">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">
-              Collections
-            </div>
-            <button
-              onClick={() => setIsCreatingCollection(true)}
-              className="text-xs text-blue-600 hover:underline px-2"
-            >
-              + New
-            </button>
+        {isCreatingGroup && (
+          <div className="mb-2 px-2">
+            <input
+              autoFocus
+              type="text"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              placeholder="Group name"
+              className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateGroup();
+                else if (e.key === "Escape") { setIsCreatingGroup(false); setNewGroupName(""); }
+              }}
+            />
           </div>
-          {isCreatingCollection && (
-            <div className="mb-2 px-2">
-              <input
-                autoFocus
-                type="text"
-                value={newCollectionName}
-                onChange={(e) => setNewCollectionName(e.target.value)}
-                placeholder="Collection name"
-                className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    handleCreateCollection();
-                  } else if (e.key === "Escape") {
-                    setIsCreatingCollection(false);
-                    setNewCollectionName("");
-                  }
-                }}
+        )}
+      </div>
+
+      <div ref={treeContainerRef} className="flex-1 min-h-0 px-3 mb-1">
+        <DndProvider backend={TouchBackend} options={{ enableMouseEvents: true, delayTouchStart: 0, delayMouseStart: 0 }}>
+          <CollectionTreeInner
+            arboristData={arboristData}
+            selectedCollectionId={selectedCollectionId}
+            treeHeight={treeHeight}
+            sidebarWidth={sidebarWidth}
+            onSelectCollection={onSelectCollection}
+            onCollectionContextMenu={onCollectionContextMenu}
+            onArboristMove={onArboristMove}
+            handleCreateCollectionForSpace={handleCreateCollectionForSpace}
+          />
+        </DndProvider>
+      </div>
+
+      {isCreatingCollection && createCollectionSpaceId && (
+        <div className="px-5 pb-1 flex-shrink-0">
+          <input
+            autoFocus
+            type="text"
+            value={newCollectionName}
+            onChange={(e) => setNewCollectionName(e.target.value)}
+            placeholder="Collection name"
+            className="w-full px-2 py-1 text-sm border border-slate-300 rounded"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleCreateCollection();
+              else if (e.key === "Escape") { setIsCreatingCollection(false); setNewCollectionName(""); setCreateCollectionSpaceId(null); }
+            }}
+          />
+        </div>
+      )}
+
+      {pinnedDomainItems.length > 0 && (
+        <div className="px-3 mb-2 flex-shrink-0 max-h-40 overflow-y-auto">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
+            Pinned
+          </div>
+          {pinnedDomainItems.map((d) => (
+            <div key={`pinned-${d.domain}`}>
+              <DomainItem
+                domain={d.domain}
+                count={d.count}
+                isSelected={selectedDomain === d.domain}
+                isPinned={true}
+                onSelect={(domain) => onSelectDomain(domain)}
+                onTogglePin={togglePinDomain}
               />
             </div>
-          )}
-          <div
-            onDragEnter={() => { dragDepthRef.current++; }}
-            onDragLeave={() => {
-              dragDepthRef.current--;
-              if (dragDepthRef.current === 0) {
-                dragHandlers.onContainerLeave();
-              }
-            }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => {
-              dragDepthRef.current = 0;
-              dragHandlers.onRootDrop(e);
-            }}
-          >
-            {treeSpaces.length === 0 ? (
-              <div className="text-xs text-slate-400 px-2">No collections</div>
-            ) : (
-              treeSpaces.map((space) => (
-                <div key={space.id} className="mb-2">
-                  <div className="flex items-center gap-2 px-2 py-1 text-[10px] font-semibold uppercase text-slate-400">
-                    {space.name}
-                  </div>
-                  {space.collections && (
-                    <CollectionTree
-                      collections={space.collections}
-                      level={0}
-                      selectedCollectionId={selectedCollectionId}
-                      dropTargetCollectionId={dropTargetCollectionId}
-                      dropPosition={dropPosition}
-                      draggedCollectionId={draggedCollectionId}
-                      onSelect={(id) => onSelectCollection(id)}
-                      onContextMenu={onCollectionContextMenu}
-                      dragHandlers={dragHandlers}
-                    />
-                  )}
-                </div>
-              ))
-            )}
-            {draggedCollectionId && (
-              <div
-                onDragOver={(e) => { e.preventDefault(); dragHandlers.onRootDragOver(e); }}
-                onDrop={(e) => { e.stopPropagation(); dragHandlers.onRootDrop(e); }}
-                className="mt-1 mx-2 py-2 border border-dashed border-slate-300 rounded-md text-center text-xs text-slate-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-colors"
-              >
-                Drop here to move to root level
-              </div>
-            )}
-          </div>
+          ))}
         </div>
+      )}
 
-        {pinnedDomains.length > 0 && (
-          <div className="px-3 mb-4">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-              Pinned
-            </div>
-            {domains
-              .filter((d) => pinnedDomains.includes(d.domain))
-              .map((d) => (
-                <div key={`pinned-${d.domain}`}>
-                  <DomainItem
-                    domain={d.domain}
-                    count={d.count}
-                    isSelected={selectedDomain === d.domain}
-                    isPinned={true}
-                    onSelect={(domain) => onSelectDomain(domain)}
-                    onTogglePin={togglePinDomain}
-                  />
-                </div>
-              ))}
+      {otherDomainItems.length > 0 && (
+        <div className="px-3 mb-2 flex-shrink-0 max-h-40 overflow-y-auto">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
+            Resources
           </div>
-        )}
+          {otherDomainItems.map((d) => (
+            <div key={d.domain}>
+              <DomainItem
+                domain={d.domain}
+                count={d.count}
+                isSelected={selectedDomain === d.domain}
+                isPinned={false}
+                onSelect={(domain) => onSelectDomain(domain)}
+                onTogglePin={togglePinDomain}
+              />
+            </div>
+          ))}
+        </div>
+      )}
 
-        {domains.filter((d) => !pinnedDomains.includes(d.domain)).length > 0 && (
-          <div className="px-3 mb-4">
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">
-              Resources
-            </div>
-            {domains
-              .filter((d) => !pinnedDomains.includes(d.domain))
-              .map((d) => (
-                <div key={d.domain}>
-                  <DomainItem
-                    domain={d.domain}
-                    count={d.count}
-                    isSelected={selectedDomain === d.domain}
-                    isPinned={false}
-                    onSelect={(domain) => onSelectDomain(domain)}
-                    onTogglePin={togglePinDomain}
-                  />
-                </div>
-              ))}
-          </div>
-        )}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-2 mr-[-4px] cursor-col-resize z-10 group flex justify-center"
+        onMouseDown={(e) => { e.preventDefault(); onSidebarResizeStart(); }}
+      >
+        <div className="h-full transition-all duration-200 w-px bg-transparent group-hover:w-1.5 group-hover:bg-blue-400" />
       </div>
     </div>
   );
