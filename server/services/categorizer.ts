@@ -99,16 +99,16 @@ export class CategorizationService {
          if (existing) {
            collectionIds.push(existing.id);
          } else {
-           // Create new collection in "Library" space
-           const librarySpace = db.prepare("SELECT id FROM spaces WHERE name = 'Library' LIMIT 1").get() as any;
-           if (!librarySpace) {
-             throw new Error("Library space not found");
-           }
-           const newId = uuidv4();
-           const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
-           db.prepare(
-             "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
-           ).run(newId, name, "Folder", color, librarySpace.id, null);
+            // Create new collection in General (inbox) space
+            const defaultSpace = db.prepare("SELECT id FROM spaces WHERE id = 'inbox-space' LIMIT 1").get() as any;
+            if (!defaultSpace) {
+              throw new Error("Default space not found");
+            }
+            const newId = uuidv4();
+            const color = "#" + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+            db.prepare(
+              "INSERT INTO collections (id, name, icon, color, space_id, parent_id) VALUES (?, ?, ?, ?, ?, ?)"
+            ).run(newId, name, "Folder", color, defaultSpace.id, null);
            collectionIds.push(newId);
          }
        }

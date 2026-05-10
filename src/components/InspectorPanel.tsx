@@ -77,6 +77,14 @@ export function InspectorPanel({
   onSelectCollectionForEdit,
   getYouTubeId,
 }: InspectorPanelProps) {
+  const safeReaderContent = useMemo(() => {
+    if (!readerContent) return null;
+    return {
+      ...readerContent,
+      content: DOMPurify.sanitize(readerContent.content),
+    };
+  }, [readerContent]);
+
   if (!selectedBookmark || !isInspectorOpen) {
     return null;
   }
@@ -183,7 +191,7 @@ export function InspectorPanel({
                 )}
                 <div
                   className="prose prose-sm prose-slate max-w-none prose-img:rounded-lg prose-a:text-blue-600"
-                  dangerouslySetInnerHTML={{ __html: useMemo(() => DOMPurify.sanitize(readerContent.content), [readerContent.content]) }}
+                  dangerouslySetInnerHTML={{ __html: safeReaderContent!.content }}
                 />
               </>
             ) : (

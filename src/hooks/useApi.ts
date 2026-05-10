@@ -23,10 +23,9 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
       setter(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(`Failed to fetch ${url}`, e);
-      setToast({ message: `Failed to load data (${url})`, type: "error" });
       setter([]);
     }
-  }, [setToast]);
+  }, []);
 
   const fetchSpaces = useCallback(async () => fetchJson("/api/spaces", setSpaces), [fetchJson]);
   const fetchCollections = useCallback(async () => fetchJson("/api/collections", setCollections), [fetchJson]);

@@ -156,7 +156,7 @@ export default function App() {
     bm.setSelectedBookmarkIds(new Set());
     insp.setIsInspectorOpen(false);
     insp.setReaderContent(null);
-  }, [selectedCollectionId, selectedDomain, isViewingTrash, debouncedSearchQuery, ui.sortBy, ui.filterBy]);
+  }, [selectedCollectionId, selectedDomain, isViewingTrash]);
 
   const handleCreateGroup = useCallback(async () => {
     if (!newGroupName.trim()) {

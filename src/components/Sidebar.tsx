@@ -142,10 +142,17 @@ export function Sidebar({
   const treeRef = useRef<TreeApi<ArboristNodeData> | undefined>(undefined);
   const groupInputRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = localStorage.getItem("sidebarWidth");
     return saved ? parseInt(saved, 10) : 256;
   });
+
+  useEffect(() => {
+    return () => {
+      dragCleanupRef.current?.();
+    };
+  }, []);
   useEffect(() => {
     if (!isCreatingGroup) return;
     const handleClick = (e: MouseEvent) => {
@@ -367,17 +374,22 @@ export function Sidebar({
               sidebarRef.current.style.width = `${newWidth}px`;
             }
           };
+          const cleanup = () => {
+            document.body.style.cursor = "";
+            document.body.classList.remove("select-none");
+            document.removeEventListener("mousemove", handleMouseMove);
+            document.removeEventListener("mouseup", handleMouseUp);
+            dragCleanupRef.current = null;
+          };
           const handleMouseUp = () => {
             const computedWidth = sidebarRef.current
               ? parseInt(sidebarRef.current.style.width || `${sidebarWidth}`, 10)
               : sidebarWidth;
             setSidebarWidth(computedWidth);
             localStorage.setItem("sidebarWidth", String(computedWidth));
-            document.body.style.cursor = "";
-            document.body.classList.remove("select-none");
-            document.removeEventListener("mousemove", handleMouseMove);
-            document.removeEventListener("mouseup", handleMouseUp);
+            cleanup();
           };
+          dragCleanupRef.current = cleanup;
           document.addEventListener("mousemove", handleMouseMove);
           document.addEventListener("mouseup", handleMouseUp);
           document.body.style.cursor = "col-resize";

@@ -146,7 +146,10 @@ router.get("/bookmarks/:id/readability", async (req, res) => {
   try {
     const config = getConfig();
     const userAgent = config.userAgent || "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-    const response = await fetch(bookmark.url, { headers: { "User-Agent": userAgent } });
+    const response = await fetch(bookmark.url, {
+      headers: { "User-Agent": userAgent },
+      signal: AbortSignal.timeout(30000),
+    });
     if (!response.ok) return res.status(response.status).json({ error: `Failed to fetch content: ${response.statusText}` });
     const html = await response.text();
     const dom = new JSDOM(html, { url: bookmark.url });
