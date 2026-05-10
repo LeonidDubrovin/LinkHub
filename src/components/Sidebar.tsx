@@ -84,7 +84,7 @@ function CollectionTreeInner(props: {
       disableDrop={({ parentNode }: { parentNode: any; dragNodes: any[]; index: number }) => !parentNode}
       disableEdit={true}
       dndManager={dndManager}
-      width={props.sidebarWidth - 24}
+      width={props.sidebarWidth - 36}
       height={props.treeHeight}
       indent={12}
       rowHeight={32}
