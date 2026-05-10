@@ -54,8 +54,7 @@ db.exec(`
     images_json TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    is_deleted INTEGER DEFAULT 0,
-    FOREIGN KEY (category_id) REFERENCES categories(id)
+    is_deleted INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS tags (

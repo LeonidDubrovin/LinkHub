@@ -141,6 +141,19 @@ export function Sidebar({
 }: SidebarProps) {
   const nothingSelected = !selectedCollectionId && !selectedDomain && !isViewingTrash;
   const treeRef = useRef<TreeApi<ArboristNodeData> | undefined>(undefined);
+  const groupInputRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isCreatingGroup) return;
+    const handleClick = (e: MouseEvent) => {
+      if (groupInputRef.current && !groupInputRef.current.contains(e.target as Node)) {
+        setIsCreatingGroup(false);
+        setNewGroupName("");
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [isCreatingGroup, setIsCreatingGroup, setNewGroupName]);
 
   const initialVisibleCount = useMemo(() => countVisibleNodes(arboristData), [arboristData]);
   const [treeHeight, setTreeHeight] = useState(() => initialVisibleCount * 32);
@@ -240,7 +253,7 @@ export function Sidebar({
             </button>
           </div>
           {isCreatingGroup && (
-            <div className="mb-2 px-2">
+            <div ref={groupInputRef} className="mb-2 px-2">
               <input
                 autoFocus
                 type="text"
