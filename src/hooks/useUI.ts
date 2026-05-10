@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 export function useUI() {
   const [viewMode, setViewMode] = useState<"list" | "grid">(() => {
@@ -30,12 +30,12 @@ export function useUI() {
     localStorage.setItem('pinnedDomains', JSON.stringify(pinnedDomains));
   }, [pinnedDomains]);
 
-  const togglePinDomain = (domain: string, e: React.MouseEvent) => {
+  const togglePinDomain = useCallback((domain: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setPinnedDomains(prev =>
       prev.includes(domain) ? prev.filter(d => d !== domain) : [...prev, domain]
     );
-  };
+  }, []);
 
   return {
     viewMode,

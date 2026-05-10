@@ -1,13 +1,19 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, memo } from "react";
 import { Bookmark } from "../types";
 import { cn } from "../lib/utils";
 
-export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Bookmark, viewMode: string, faviconUrl: string }) {
+function DynamicCoverInner({ bookmark, viewMode, faviconUrl }: { bookmark: Bookmark, viewMode: string, faviconUrl: string }) {
   const [hoverIndex, setHoverIndex] = useState(0);
   const [validImages, setValidImages] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-   useEffect(() => {
+    useEffect(() => {
+     // In list mode the thumbnail is tiny — skip heavy image validation
+     if (viewMode === "list") {
+       setValidImages(bookmark.cover_image_url ? [bookmark.cover_image_url] : []);
+       return;
+     }
+
      let images: string[] = [];
      try {
        if (bookmark.images_json) {
@@ -141,11 +147,11 @@ export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Boo
 
   // Fallback to screenshot API if no images found
   return (
-    <img 
-      src={`https://image.thum.io/get/width/600/crop/800/${bookmark.url}`} 
-      alt="Screenshot" 
-      className="w-full h-full object-cover" 
-      referrerPolicy="no-referrer" 
+    <img
+      src={`https://image.thum.io/get/width/600/crop/800/${bookmark.url}`}
+      alt="Screenshot"
+      className="w-full h-full object-cover"
+      referrerPolicy="no-referrer"
       onError={(e) => {
         // If screenshot fails, fallback to favicon
         const target = e.target as HTMLImageElement;
@@ -157,3 +163,5 @@ export function DynamicCover({ bookmark, viewMode, faviconUrl }: { bookmark: Boo
     />
   );
 }
+
+export const DynamicCover = memo(DynamicCoverInner);

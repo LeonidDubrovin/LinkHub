@@ -288,10 +288,14 @@ export function useCollections(
       const idx = siblings.findIndex((c) => c.id === collectionId);
       if (idx <= 0) return;
       const prev = siblings[idx - 1];
-      await handleUpdateCollection(collectionId, { sort_order: prev.sort_order });
-      await handleUpdateCollection(prev.id, { sort_order: siblings[idx].sort_order });
+      const curr = siblings[idx];
+      await Promise.all([
+        apiClient.collections.update(collectionId, { name: curr.name, icon: curr.icon, color: curr.color, parent_id: curr.parent_id, sort_order: prev.sort_order, space_id: curr.space_id }),
+        apiClient.collections.update(prev.id, { name: prev.name, icon: prev.icon, color: prev.color, parent_id: prev.parent_id, sort_order: curr.sort_order, space_id: prev.space_id }),
+      ]);
+      await fetchCollections();
     },
-    [getSiblings, handleUpdateCollection]
+    [getSiblings, fetchCollections]
   );
 
   const handleMoveCollectionDown = useCallback(
@@ -300,10 +304,14 @@ export function useCollections(
       const idx = siblings.findIndex((c) => c.id === collectionId);
       if (idx < 0 || idx >= siblings.length - 1) return;
       const next = siblings[idx + 1];
-      await handleUpdateCollection(collectionId, { sort_order: next.sort_order });
-      await handleUpdateCollection(next.id, { sort_order: siblings[idx].sort_order });
+      const curr = siblings[idx];
+      await Promise.all([
+        apiClient.collections.update(collectionId, { name: curr.name, icon: curr.icon, color: curr.color, parent_id: curr.parent_id, sort_order: next.sort_order, space_id: curr.space_id }),
+        apiClient.collections.update(next.id, { name: next.name, icon: next.icon, color: next.color, parent_id: next.parent_id, sort_order: curr.sort_order, space_id: next.space_id }),
+      ]);
+      await fetchCollections();
     },
-    [getSiblings, handleUpdateCollection]
+    [getSiblings, fetchCollections]
   );
 
   const handleMoveCollectionOut = useCallback(

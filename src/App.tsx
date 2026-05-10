@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useDeferredValue } from "react";
 import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddBookmarkModal } from "./components/AddBookmarkModal";
@@ -20,6 +20,47 @@ import { useCollections } from "./hooks/useCollections";
 import { useBookmarks } from "./hooks/useBookmarks";
 import { apiClient } from "./services/api";
 import { buildCollectionTree } from "./utils/buildCollectionTree";
+
+function CollectionContextMenuWrapper({
+  contextMenu,
+  getSiblings,
+  onClose,
+  onRename,
+  onChangeIcon,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  onMoveOut,
+}: {
+  contextMenu: { collection: import("./types").Collection; position: { x: number; y: number } };
+  getSiblings: (id: string) => import("./types").Collection[];
+  onClose: () => void;
+  onRename: (c: import("./types").Collection) => void;
+  onChangeIcon: (c: import("./types").Collection) => void;
+  onDelete: (id: string) => void;
+  onMoveUp: (id: string) => void;
+  onMoveDown: (id: string) => void;
+  onMoveOut: (id: string) => void;
+}) {
+  const siblings = getSiblings(contextMenu.collection.id);
+  const index = siblings.findIndex((c) => c.id === contextMenu.collection.id);
+  return (
+    <CollectionContextMenu
+      collection={contextMenu.collection}
+      position={contextMenu.position}
+      onClose={onClose}
+      onRename={onRename}
+      onChangeIcon={onChangeIcon}
+      onDelete={onDelete}
+      onMoveUp={onMoveUp}
+      onMoveDown={onMoveDown}
+      onMoveOut={onMoveOut}
+      canMoveUp={index > 0}
+      canMoveDown={index >= 0 && index < siblings.length - 1}
+      canMoveOut={!!contextMenu.collection.parent_id}
+    />
+  );
+}
 
 type ToastMessage = { message: string; type: "success" | "error" | "info" };
 type SortBy = "date_desc" | "date_asc" | "title_asc" | "title_desc" | "domain_asc" | "domain_desc";
@@ -75,8 +116,8 @@ export default function App() {
   }, [bm.fetchBookmarks, selectedCollectionId, selectedDomain]);
 
   const fetchAll = useCallback(async () => {
-    await Promise.all([api.fetchSpaces(), api.fetchCollections(), api.fetchDomains()]);
-  }, [api.fetchSpaces, api.fetchCollections, api.fetchDomains]);
+    await Promise.all([api.fetchSpaces(), api.fetchCollections(), api.fetchTags(), api.fetchDomains()]);
+  }, [api.fetchSpaces, api.fetchCollections, api.fetchTags, api.fetchDomains]);
 
   useEffect(() => { api.initialize(); }, []);
 
@@ -237,11 +278,13 @@ export default function App() {
     [api.collections]
   );
 
+  const deferredSearchQuery = useDeferredValue(ui.searchQuery);
+
   const filteredBookmarks = useMemo(
     () =>
       bm.bookmarks
         .filter((b) => {
-          const q = ui.searchQuery.toLowerCase();
+          const q = deferredSearchQuery.toLowerCase();
           const matchesSearch =
             b.title?.toLowerCase().includes(q) || b.description?.toLowerCase().includes(q) || b.url.toLowerCase().includes(q);
           if (!matchesSearch) return false;
@@ -261,12 +304,16 @@ export default function App() {
             default: return 0;
           }
         }),
-    [bm.bookmarks, ui.searchQuery, ui.filterBy, ui.sortBy]
+    [bm.bookmarks, deferredSearchQuery, ui.filterBy, ui.sortBy]
   );
 
   const toggleSelectAll = useCallback(() => {
-    if (bm.selectedBookmarkIds.size === filteredBookmarks.length && filteredBookmarks.length > 0) bm.setSelectedBookmarkIds(new Set());
-    else bm.setSelectedBookmarkIds(new Set(filteredBookmarks.map((b) => b.id)));
+    if (filteredBookmarks.length === 0) return;
+    if (bm.selectedBookmarkIds.size === filteredBookmarks.length) {
+      bm.setSelectedBookmarkIds(new Set());
+    } else {
+      bm.setSelectedBookmarkIds(new Set(filteredBookmarks.map((b) => b.id)));
+    }
   }, [bm.selectedBookmarkIds, filteredBookmarks]);
 
   const onSelectBookmark = useCallback((bookmark: Bookmark) => {
@@ -274,7 +321,7 @@ export default function App() {
     insp.setReaderContent(null);
     insp.setInspectorTab("details");
     insp.setIsInspectorOpen(true);
-  }, [insp]);
+  }, [bm, insp]);
 
   return (
     <>
@@ -414,26 +461,19 @@ export default function App() {
         onCancel={() => bm.setConfirmDialog({ ...bm.confirmDialog, isOpen: false })}
       />
 
-      {coll.contextMenu && (() => {
-        const s = coll.getSiblings(coll.contextMenu.collection.id);
-        const i = s.findIndex(c => c.id === coll.contextMenu.collection.id);
-        return (
-          <CollectionContextMenu
-            collection={coll.contextMenu.collection}
-            position={coll.contextMenu.position}
-            onClose={() => coll.setContextMenu(null)}
-            onRename={coll.setRenamingCollection}
-            onChangeIcon={coll.setIconPickerCollection}
-            onDelete={coll.handleDeleteCollection}
-            onMoveUp={coll.handleMoveCollectionUp}
-            onMoveDown={coll.handleMoveCollectionDown}
-            onMoveOut={coll.handleMoveCollectionOut}
-            canMoveUp={i > 0}
-            canMoveDown={i >= 0 && i < s.length - 1}
-            canMoveOut={!!coll.contextMenu.collection.parent_id}
-          />
-        );
-      })()}
+      {coll.contextMenu && (
+        <CollectionContextMenuWrapper
+          contextMenu={coll.contextMenu}
+          getSiblings={coll.getSiblings}
+          onClose={() => coll.setContextMenu(null)}
+          onRename={coll.setRenamingCollection}
+          onChangeIcon={coll.setIconPickerCollection}
+          onDelete={coll.handleDeleteCollection}
+          onMoveUp={coll.handleMoveCollectionUp}
+          onMoveDown={coll.handleMoveCollectionDown}
+          onMoveOut={coll.handleMoveCollectionOut}
+        />
+      )}
 
       {coll.renamingCollection && (
         <RenameCollectionModal

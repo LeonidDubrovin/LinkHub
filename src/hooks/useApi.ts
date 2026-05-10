@@ -13,49 +13,21 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
 
-  const fetchSpaces = useCallback(async () => {
+  const fetchJson = useCallback(async <T,>(url: string, setter: (data: T[]) => void) => {
     try {
-      const res = await fetch("/api/spaces");
+      const res = await fetch(url);
       const data = await res.json();
-      setSpaces(Array.isArray(data) ? data : []);
+      setter(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error("Failed to fetch spaces", e);
-      setSpaces([]);
+      console.error(`Failed to fetch ${url}`, e);
+      setter([]);
     }
   }, []);
 
-  const fetchCollections = useCallback(async () => {
-    try {
-      const res = await fetch("/api/collections");
-      const data = await res.json();
-      setCollections(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to fetch collections", e);
-      setCollections([]);
-    }
-  }, []);
-
-  const fetchTags = useCallback(async () => {
-    try {
-      const res = await fetch("/api/tags");
-      const data = await res.json();
-      setTags(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to fetch tags", e);
-      setTags([]);
-    }
-  }, []);
-
-  const fetchDomains = useCallback(async () => {
-    try {
-      const res = await fetch("/api/domains");
-      const data = await res.json();
-      setDomains(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error("Failed to fetch domains", e);
-      setDomains([]);
-    }
-  }, []);
+  const fetchSpaces = useCallback(async () => fetchJson("/api/spaces", setSpaces), [fetchJson]);
+  const fetchCollections = useCallback(async () => fetchJson("/api/collections", setCollections), [fetchJson]);
+  const fetchTags = useCallback(async () => fetchJson("/api/tags", setTags), [fetchJson]);
+  const fetchDomains = useCallback(async () => fetchJson("/api/domains", setDomains), [fetchJson]);
 
   const fetchAllMetadata = useCallback(async () => {
     await Promise.all([
@@ -65,26 +37,6 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
       fetchDomains(),
     ]);
   }, [fetchSpaces, fetchCollections, fetchTags, fetchDomains]);
-
-  const fetchBookmarks = useCallback(async (
-    selectedCollectionId: string | null,
-    selectedTagId: string | null,
-    selectedDomain: string | null,
-  ): Promise<Bookmark[]> => {
-    let url = "/api/bookmarks?";
-    if (selectedCollectionId) url += `collectionIds=${encodeURIComponent(selectedCollectionId)}&`;
-    if (selectedTagId) url += `tagId=${encodeURIComponent(selectedTagId)}&`;
-    if (selectedDomain) url += `domain=${encodeURIComponent(selectedDomain)}&`;
-
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      return Array.isArray(data) ? data : [];
-    } catch (e) {
-      console.error("Failed to fetch bookmarks", e);
-      return [];
-    }
-  }, []);
 
   const initialize = useCallback(async () => {
     try {
@@ -115,7 +67,6 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
     fetchTags,
     fetchDomains,
     fetchAllMetadata,
-    fetchBookmarks,
     initialize,
   };
 }

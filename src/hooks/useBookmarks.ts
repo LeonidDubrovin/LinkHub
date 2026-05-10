@@ -115,7 +115,7 @@ export function useBookmarks(setToast: ToastFn) {
         onConfirm: async () => {
           try {
             await apiClient.bookmarks.delete(id);
-            setSelectedBookmark(null);
+            if (selectedBookmark?.id === id) setSelectedBookmark(null);
             await fetchBookmarksFn?.();
             await fetchAllFn?.();
             setToast({ message: "Bookmark deleted successfully", type: "success" });
@@ -125,7 +125,7 @@ export function useBookmarks(setToast: ToastFn) {
         },
       });
     },
-    [setToast]
+    [setToast, selectedBookmark]
   );
 
   const handleBulkDelete = useCallback(
@@ -234,8 +234,7 @@ export function useBookmarks(setToast: ToastFn) {
     [isCategorizing, setToast]
   );
 
-  const toggleBookmarkSelection = useCallback((id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const toggleBookmarkSelection = useCallback((id: string) => {
     setSelectedBookmarkIds((prev) => {
       const s = new Set(prev);
       if (s.has(id)) s.delete(id); else s.add(id);
