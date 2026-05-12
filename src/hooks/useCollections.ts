@@ -394,7 +394,7 @@ export function useCollections(
       if (!renamingSpace) return;
       try {
         await apiClient.spaces.update(renamingSpace.id, { name: newName });
-        await fetchCollections(); // refresh spaces indirectly via parent
+        await fetchSpaces();
         setToast({ message: "Group renamed", type: "success" });
       } catch (error) {
         const msg = error instanceof ApiError ? error.message : "Failed to rename group";
@@ -402,7 +402,7 @@ export function useCollections(
       }
       setRenamingSpace(null);
     },
-    [renamingSpace, setToast]
+    [renamingSpace, fetchSpaces, setToast]
   );
 
   const handleDeleteSpace = useCallback(
@@ -445,23 +445,6 @@ export function useCollections(
     [iconPickerCollection, handleUpdateCollection]
   );
 
-  const treeSpaces = useMemo(() => {
-    if (spaces.length === 0 || collections.length === 0) return [];
-    const sortedSpaces = [...spaces].sort((a, b) => {
-      if (a.id === "inbox-space") return -1;
-      if (b.id === "inbox-space") return 1;
-      return a.name.localeCompare(b.name);
-    });
-    const visibleSpaces = sortedSpaces.filter((space) => space.name !== "Library");
-    return visibleSpaces.map((space) => ({
-      ...space,
-      collections: buildCollectionTree(
-        collections.filter((c) => c.space_id === space.id),
-        null
-      ),
-    }));
-  }, [spaces, collections]);
-
   const arboristData = useMemo(
     () => transformToArboristData(spaces, collections),
     [spaces, collections]
@@ -485,7 +468,6 @@ export function useCollections(
     createCollectionSpaceId,
     setCreateCollectionSpaceId,
 
-    treeSpaces,
     arboristData,
 
     handleCreateCollection,

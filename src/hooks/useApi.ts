@@ -32,15 +32,6 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
   const fetchTags = useCallback(async () => fetchJson("/api/tags", setTags), [fetchJson]);
   const fetchDomains = useCallback(async () => fetchJson("/api/domains", setDomains), [fetchJson]);
 
-  const fetchAllMetadata = useCallback(async () => {
-    await Promise.all([
-      fetchSpaces(),
-      fetchCollections(),
-      fetchTags(),
-      fetchDomains(),
-    ]);
-  }, [fetchSpaces, fetchCollections, fetchTags, fetchDomains]);
-
   const initialize = useCallback(async () => {
     try {
       await Promise.all([
@@ -69,7 +60,6 @@ export function useApi(setToast: (toast: ToastMessage | null) => void) {
     fetchCollections,
     fetchTags,
     fetchDomains,
-    fetchAllMetadata,
     initialize,
   };
 }

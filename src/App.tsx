@@ -113,7 +113,6 @@ export default function App() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading,
     refetch: refetchBookmarks,
   } = usePaginatedBookmarks(
     !isViewingTrash ? selectedCollectionId : null,
@@ -130,7 +129,6 @@ export default function App() {
     fetchNextPage: fetchNextTrashPage,
     hasNextPage: hasNextTrashPage,
     isFetchingNextPage: isFetchingNextTrashPage,
-    isLoading: isTrashLoading,
     refetch: refetchTrash,
   } = usePaginatedTrash(
     isViewingTrash ? debouncedSearchQuery : "",

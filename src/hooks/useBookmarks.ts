@@ -75,10 +75,11 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
         if (existing.length > 0) message += ` ${existing.length} already existed.`;
         const failed = settled.filter((r) => r.status === "rejected").length;
         if (failed > 0) message += ` ${failed} failed.`;
-        setToast({ message, type: added.length > 0 || restored.length > 0 ? "success" : "info" });
+        const anySuccess = added.length > 0 || restored.length > 0;
+        setToast({ message, type: anySuccess ? "success" : "info" });
+        setIsAdding(false);
 
-        if (added.length > 0 || restored.length > 0) {
-          setIsAdding(false);
+        if (anySuccess) {
           await fetchBookmarksFn?.();
           await fetchAllFn?.();
           invalidateBookmarks?.();
@@ -314,11 +315,12 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
           onConfirm: async () => {
             try {
               const ids: string[] = Array.from(selectedBookmarkIds);
+              const hadSelected = selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id);
               for (const id of ids) {
                 await apiClient.bookmarks.permanentlyDelete(id);
               }
               setSelectedBookmarkIds(new Set());
-              if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
+              if (hadSelected) {
                 setSelectedBookmark(null);
               }
               await fetchBookmarksFn?.();
@@ -377,27 +379,28 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
               label: "Remove from collection",
               variant: "primary",
               onClick: async () => {
-                try {
-                  const ids: string[] = Array.from(selectedBookmarkIds);
-                  for (const id of ids) {
-                    const bm = currentBookmarks.find((b) => b.id === id);
-                    if (bm && bm.collections.length === 1 && bm.collections[0].id === currentCollectionId) {
-                      await apiClient.bookmarks.delete(id);
-                    } else {
-                      await apiClient.collections.removeFromBookmark(id, currentCollectionId);
-                    }
-                  }
-                  setSelectedBookmarkIds(new Set());
-                  if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
-                    setSelectedBookmark(null);
-                  }
-                  await fetchBookmarksFn?.();
-                  await fetchAllFn?.();
-                  invalidateBookmarks?.();
-                  setToast({ message: "Bookmarks removed from collection", type: "success" });
-                } catch {
-                  setToast({ message: "Failed to remove bookmarks from collection", type: "error" });
+            try {
+              const ids: string[] = Array.from(selectedBookmarkIds);
+              const hadSelected = selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id);
+              for (const id of ids) {
+                const bm = currentBookmarks.find((b) => b.id === id);
+                if (bm && bm.collections.length === 1 && bm.collections[0].id === currentCollectionId) {
+                  await apiClient.bookmarks.delete(id);
+                } else {
+                  await apiClient.collections.removeFromBookmark(id, currentCollectionId);
                 }
+              }
+              setSelectedBookmarkIds(new Set());
+              if (hadSelected) {
+                setSelectedBookmark(null);
+              }
+              await fetchBookmarksFn?.();
+              await fetchAllFn?.();
+              invalidateBookmarks?.();
+              setToast({ message: "Bookmarks removed from collection", type: "success" });
+            } catch {
+              setToast({ message: "Failed to remove bookmarks from collection", type: "error" });
+            }
               },
             },
           ],
@@ -409,9 +412,11 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
           message: `Are you sure you want to move ${selectedBookmarkIds.size} bookmarks to trash?`,
           onConfirm: async () => {
             try {
-              await apiClient.bookmarks.bulkDelete(Array.from(selectedBookmarkIds));
+              const ids: string[] = Array.from(selectedBookmarkIds);
+              const hadSelected = selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id);
+              await apiClient.bookmarks.bulkDelete(ids);
               setSelectedBookmarkIds(new Set());
-              if (selectedBookmark && selectedBookmarkIds.has(selectedBookmark.id)) {
+              if (hadSelected) {
                 setSelectedBookmark(null);
               }
               await fetchBookmarksFn?.();
@@ -478,7 +483,7 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
         const result = await apiClient.collections.setForBookmark(bookmarkId, collectionIds);
         if (result.success) {
           const updated = await apiClient.bookmarks.get(bookmarkId);
-          setSelectedBookmark(updated);
+          setSelectedBookmark((prev) => (prev?.id === bookmarkId ? updated : prev));
           await fetchBookmarksFn?.();
           await fetchCollectionsFn?.();
           invalidateBookmarks?.();
