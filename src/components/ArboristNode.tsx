@@ -13,7 +13,7 @@ interface ArboristNodeProps extends NodeRendererProps<ArboristNodeData> {
   onContextMenu: (e: React.MouseEvent, coll: Collection) => void;
   onSpaceContextMenu: (e: React.MouseEvent, space: { id: string; name: string; icon: string; color: string; created_at: string }) => void;
   onCreateCollection: (spaceId: string) => void;
-  onDropBookmarks?: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => void;
+  onDropBookmarks?: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null, isFromTrash?: boolean) => void;
 }
 
 export const ArboristNode = React.memo(function ArboristNode({
@@ -54,7 +54,8 @@ export const ArboristNode = React.memo(function ArboristNode({
       if (payload) {
         const ids: string[] = JSON.parse(payload);
         const sourceCollectionId = e.dataTransfer.getData("application/linkhub-source-collection") || null;
-        onDropBookmarks(data.id, ids, sourceCollectionId);
+        const isFromTrash = e.dataTransfer.getData("application/linkhub-source-trash") === "true";
+        onDropBookmarks(data.id, ids, sourceCollectionId, isFromTrash);
       }
     } catch {}
   }, [onDropBookmarks, data.id, data.isGroup]);

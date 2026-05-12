@@ -342,13 +342,15 @@ export function useCollections(
   );
 
   const handleDropBookmarks = useCallback(
-    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null, fetchBookmarksFn?: () => Promise<void>) => {
+    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null, isFromTrash?: boolean, fetchBookmarksFn?: () => Promise<void>) => {
       try {
         // IMPORTANT: Add to target FIRST, then remove from source.
         // If we remove first, the orphaned-bookmark fallback on the server
         // would temporarily add the bookmark to inbox-collection before
         // the target add happens, resulting in an unwanted extra collection.
-        const result = await apiClient.collections.addBookmarksToCollection(collectionId, bookmarkIds);
+        // When dragging from Trash, we replace all existing collections so
+        // the bookmark is restored into ONLY the target collection.
+        const result = await apiClient.collections.addBookmarksToCollection(collectionId, bookmarkIds, isFromTrash);
         if (sourceCollectionId && result.success) {
           await Promise.all(
             bookmarkIds.map((id) =>

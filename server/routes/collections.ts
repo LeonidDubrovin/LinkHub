@@ -126,13 +126,17 @@ router.get("/bookmarks/:id/collections", (req, res) => {
 router.post("/collections/:collectionId/bookmarks", (req, res) => {
   try {
     const { collectionId } = req.params;
-    const { bookmarkIds } = req.body;
+    const { bookmarkIds, replace } = req.body;
     if (!Array.isArray(bookmarkIds)) return badRequest(res, "bookmarkIds array is required");
     if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
     const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
     const restore = db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1");
+    const clearCollections = db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?");
     db.transaction(() => {
       for (const bmId of bookmarkIds) {
+        if (replace) {
+          clearCollections.run(bmId);
+        }
         insert.run(bmId, collectionId);
         restore.run(bmId);
       }

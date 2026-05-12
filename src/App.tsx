@@ -257,8 +257,8 @@ export default function App() {
   );
 
   const handleDropBookmarks = useCallback(
-    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null) => {
-      await coll.handleDropBookmarks(collectionId, bookmarkIds, sourceCollectionId, currentRefetch);
+    async (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null, isFromTrash?: boolean) => {
+      await coll.handleDropBookmarks(collectionId, bookmarkIds, sourceCollectionId, isFromTrash, currentRefetch);
       invalidateBookmarks();
     },
     [coll.handleDropBookmarks, currentRefetch, invalidateBookmarks]

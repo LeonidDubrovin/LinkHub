@@ -310,6 +310,9 @@ export function BookmarkList({
                   if (selectedCollectionId) {
                     e.dataTransfer.setData("application/linkhub-source-collection", selectedCollectionId);
                   }
+                  if (isTrash) {
+                    e.dataTransfer.setData("application/linkhub-source-trash", "true");
+                  }
                   e.dataTransfer.effectAllowed = "move";
                 }}
                 onContextMenu={onBookmarkContextMenu}
