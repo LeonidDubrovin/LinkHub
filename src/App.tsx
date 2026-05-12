@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Toast } from "./components/Toast";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddBookmarkModal } from "./components/AddBookmarkModal";
+import { BulkAddResultModal } from "./components/BulkAddResultModal";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import { BookmarkList } from "./components/BookmarkList";
@@ -502,6 +503,13 @@ export default function App() {
         onSubmit={handleAddBookmark}
         collections={api.collections}
         defaultCollectionIds={selectedCollectionId ? [selectedCollectionId] : []}
+      />
+
+      <BulkAddResultModal
+        isOpen={!!bm.bulkAddResult}
+        urls={bm.bulkAddResult?.urls ?? []}
+        results={bm.bulkAddResult?.results ?? []}
+        onClose={() => bm.setBulkAddResult(null)}
       />
 
       <SettingsModal

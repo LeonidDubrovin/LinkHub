@@ -29,6 +29,7 @@ export interface CreateBookmarkResult {
   restored?: boolean;
   id?: string;
   needsRefresh?: boolean;
+  error?: string;
 }
 
 export interface CategorizeResult {

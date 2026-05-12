@@ -12,6 +12,7 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingLoading, setIsAddingLoading] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
+  const [bulkAddResult, setBulkAddResult] = useState<{ urls: string[]; results: import("../services/api").CreateBookmarkResult[] } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
@@ -73,6 +74,7 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
         if (failed > 0) message += ` ${failed} failed.`;
         const anySuccess = added.length > 0 || restored.length > 0;
         setToast({ message, type: anySuccess ? "success" : "info" });
+        setBulkAddResult({ urls, results });
         setIsAdding(false);
 
         if (anySuccess) {
@@ -531,6 +533,8 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
     setIsAdding,
     isAddingLoading,
     isCategorizing,
+    bulkAddResult,
+    setBulkAddResult,
     confirmDialog,
     setConfirmDialog,
 

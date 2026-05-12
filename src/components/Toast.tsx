@@ -10,7 +10,7 @@ interface ToastProps {
 export function Toast({ toast, onClose }: ToastProps) {
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => onClose(), 8000);
+      const timer = setTimeout(() => onClose(), 4000);
       return () => clearTimeout(timer);
     }
   }, [toast, onClose]);
