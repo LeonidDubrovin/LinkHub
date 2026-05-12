@@ -61,19 +61,15 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
 
       setIsAddingLoading(true);
       try {
-        const settled = await Promise.allSettled(
-          urls.map((url) => apiClient.bookmarks.create(url, collectionIds))
-        );
-        const results = settled
-          .filter((r): r is PromiseFulfilledResult<import("../services/api").CreateBookmarkResult> => r.status === "fulfilled")
-          .map((r) => r.value);
+        const response = await apiClient.bookmarks.bulkCreate(urls, collectionIds);
+        const results = response.results;
         const restored = results.filter((r) => r.restored);
         const existing = results.filter((r) => r.exists && !r.restored);
         const added = results.filter((r) => r.success && r.id && !r.restored);
         let message = `Added ${added.length} new bookmarks.`;
         if (restored.length > 0) message += ` ${restored.length} restored from trash.`;
         if (existing.length > 0) message += ` ${existing.length} already existed.`;
-        const failed = settled.filter((r) => r.status === "rejected").length;
+        const failed = results.filter((r) => !r.success && !r.exists).length;
         if (failed > 0) message += ` ${failed} failed.`;
         const anySuccess = added.length > 0 || restored.length > 0;
         setToast({ message, type: anySuccess ? "success" : "info" });

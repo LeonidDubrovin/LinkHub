@@ -160,11 +160,11 @@ router.post("/bookmarks", async (req, res) => {
 });
 
 router.post("/bookmarks/bulk", async (req, res) => {
-  const { urls } = req.body;
+  const { urls, collectionIds } = req.body;
   if (!urls || !Array.isArray(urls)) return res.status(400).json({ error: "URLs array is required" });
   const results = [];
   for (const url of urls) {
-    try { results.push(await createBookmark(url)); }
+    try { results.push(await createBookmark(url, { collectionIds })); }
     catch (error: any) { console.error(`Error adding bookmark ${url}:`, error); results.push({ url, error: error.message, success: false }); }
   }
   res.json({ results });

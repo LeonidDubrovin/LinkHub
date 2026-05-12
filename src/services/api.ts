@@ -104,6 +104,8 @@ export const apiClient = {
       apiClient.get<Bookmark>(`/api/bookmarks/${id}`),
     create: (url: string, collectionIds?: string[]) =>
       apiClient.post<CreateBookmarkResult>("/api/bookmarks", { url, collectionIds }),
+    bulkCreate: (urls: string[], collectionIds?: string[]) =>
+      apiClient.post<{ results: CreateBookmarkResult[] }>("/api/bookmarks/bulk", { urls, collectionIds }),
     refresh: (id: string) =>
       apiClient.post<{ success: boolean }>(`/api/bookmarks/${id}/refresh`, {}),
     delete: (id: string) =>
