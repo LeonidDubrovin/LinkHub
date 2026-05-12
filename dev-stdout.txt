@@ -1,6 +1,0 @@
-
-> linkhub@1.1.0 dev
-> tsx server.ts
-
-Server running on http://127.0.0.1:8400
-Using database at: E:\dev\LinkHub\data\bookmarks.db

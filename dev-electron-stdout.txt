@@ -1,8 +1,0 @@
-
-> linkhub@1.1.0 dev:electron
-> concurrently "npm run dev" "node scripts/electron-dev-setup.mjs && wait-on file:.server-port && tsup && node scripts/electron-dev.mjs"
-
-[0] 
-[0] > linkhub@1.1.0 dev
-[0] > tsx server.ts
-[0] 
