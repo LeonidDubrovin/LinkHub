@@ -1,6 +1,6 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import db from "../db.ts";
+import { getDb } from "../db.ts";
 import {
   sendJson,
   sendError,
@@ -12,8 +12,9 @@ import {
 
 const router = express.Router();
 
-router.get("/collections", (req, res) => {
+router.get("/collections", async (req, res) => {
   try {
+    const db = await getDb();
     const { spaceId } = req.query;
     let query = `
       SELECT c.*, COUNT(b.id) as bookmarkCount
@@ -27,38 +28,58 @@ router.get("/collections", (req, res) => {
       params.push(spaceId);
     }
     query += " GROUP BY c.id ORDER BY c.sort_order ASC, c.name ASC";
-    res.json(db.prepare(query).all(...params));
+    res.json(await db.all(query, ...params));
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.post("/collections", (req, res) => {
+router.post("/collections", async (req, res) => {
   try {
     const { name, icon, color, space_id, parent_id } = req.body;
     if (!name || !space_id) return badRequest(res, "Name and space_id are required");
-    const maxOrder = db.prepare(
-      "SELECT COALESCE(MAX(sort_order), -1) as maxOrder FROM collections WHERE space_id = ? AND parent_id IS ?"
-    ).get(space_id, parent_id || null) as { maxOrder: number };
+    const db = await getDb();
+    const maxOrder = (await db.get(
+      "SELECT COALESCE(MAX(sort_order), -1) as maxOrder FROM collections WHERE space_id = ? AND parent_id IS ?",
+      space_id,
+      parent_id || null
+    )) as { maxOrder: number } | undefined;
     const id = uuidv4();
-    db.prepare("INSERT INTO collections (id, name, icon, color, space_id, parent_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .run(id, name, icon || "Folder", color || null, space_id, parent_id || null, maxOrder.maxOrder + 1);
-    const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
+    await db.run(
+      "INSERT INTO collections (id, name, icon, color, space_id, parent_id, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      id,
+      name,
+      icon || "Folder",
+      color || null,
+      space_id,
+      parent_id || null,
+      (maxOrder?.maxOrder ?? -1) + 1
+    );
+    const collection = await db.get("SELECT * FROM collections WHERE id = ?", id);
     sendJson(res, collection);
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.put("/collections/:id", (req, res) => {
+router.put("/collections/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { name, icon, color, parent_id, sort_order, space_id } = req.body;
-    const existing = db.prepare("SELECT * FROM collections WHERE id = ?").get(id) as any;
+    const db = await getDb();
+    const existing = (await db.get("SELECT * FROM collections WHERE id = ?", id)) as any;
     if (!existing) return notFound(res, "Collection not found");
-    db.prepare("UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ?, sort_order = ?, space_id = ? WHERE id = ?")
-      .run(name ?? existing.name, icon ?? existing.icon, color ?? existing.color, parent_id !== undefined ? (parent_id || null) : existing.parent_id, sort_order !== undefined ? sort_order : existing.sort_order, space_id ?? existing.space_id, id);
-    const collection = db.prepare("SELECT * FROM collections WHERE id = ?").get(id);
+    await db.run(
+      "UPDATE collections SET name = ?, icon = ?, color = ?, parent_id = ?, sort_order = ?, space_id = ? WHERE id = ?",
+      name ?? existing.name,
+      icon ?? existing.icon,
+      color ?? existing.color,
+      parent_id !== undefined ? (parent_id || null) : existing.parent_id,
+      sort_order !== undefined ? sort_order : existing.sort_order,
+      space_id ?? existing.space_id,
+      id
+    );
+    const collection = await db.get("SELECT * FROM collections WHERE id = ?", id);
     if (!collection) return notFound(res, "Collection not found");
     sendJson(res, collection);
   } catch (error: any) {
@@ -66,42 +87,55 @@ router.put("/collections/:id", (req, res) => {
   }
 });
 
-router.put("/collections/reorder", (req, res) => {
+router.put("/collections/reorder", async (req, res) => {
   try {
     const { orders } = req.body;
     if (!Array.isArray(orders)) return badRequest(res, "orders array is required");
-    db.transaction(() => {
-      const update = db.prepare("UPDATE collections SET sort_order = ? WHERE id = ?");
+    const db = await getDb();
+    await db.run("BEGIN TRANSACTION");
+    try {
       for (let i = 0; i < orders.length; i++) {
-        update.run(i, orders[i]);
+        await db.run("UPDATE collections SET sort_order = ? WHERE id = ?", i, orders[i]);
       }
-    })();
+      await db.run("COMMIT");
+    } catch (e) {
+      await db.run("ROLLBACK").catch(() => {});
+      throw e;
+    }
     sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.delete("/collections/:id", (req, res) => {
+router.delete("/collections/:id", async (req, res) => {
   try {
     const { id } = req.params;
     if (id === 'inbox-collection') return sendError(res, "Cannot delete system Inbox collection", 403);
-    db.transaction(() => {
-      db.prepare("UPDATE collections SET parent_id = NULL WHERE parent_id = ?").run(id);
-      db.prepare("DELETE FROM bookmark_collections WHERE collection_id = ?").run(id);
-      // Move orphaned bookmarks (no remaining collections) to inbox-collection
-      const orphaned = db.prepare(`
+    const db = await getDb();
+    await db.run("BEGIN TRANSACTION");
+    try {
+      await db.run("UPDATE collections SET parent_id = NULL WHERE parent_id = ?", id);
+      await db.run("DELETE FROM bookmark_collections WHERE collection_id = ?", id);
+      const orphaned = (await db.all(`
         SELECT b.id FROM bookmarks b
         LEFT JOIN bookmark_collections bc ON bc.bookmark_id = b.id
         WHERE b.is_deleted = 0 AND bc.bookmark_id IS NULL
-      `).all() as { id: string }[];
-      const insertInbox = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
+      `)) as { id: string }[];
       for (const o of orphaned) {
-        insertInbox.run(o.id, 'inbox-collection');
+        await db.run(
+          "INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)",
+          o.id,
+          "inbox-collection"
+        );
       }
-      const result = db.prepare("DELETE FROM collections WHERE id = ?").run(id);
-      if (result.changes === 0) throw new Error("Collection not found");
-    })();
+      const result = await db.run("DELETE FROM collections WHERE id = ?", id);
+      if ((result?.changes ?? 0) === 0) throw new Error("Collection not found");
+      await db.run("COMMIT");
+    } catch (e: any) {
+      await db.run("ROLLBACK").catch(() => {});
+      throw e;
+    }
     sendJson(res, { success: true });
   } catch (error: any) {
     if (error.message === "Collection not found") return notFound(res, error.message);
@@ -109,94 +143,148 @@ router.delete("/collections/:id", (req, res) => {
   }
 });
 
-router.get("/bookmarks/:id/collections", (req, res) => {
+router.get("/bookmarks/:id/collections", async (req, res) => {
   try {
     const { id } = req.params;
-    const collections = db.prepare(`
+    const db = await getDb();
+    const collections = await db.all(`
       SELECT c.* FROM collections c
       JOIN bookmark_collections bc ON c.id = bc.collection_id
       WHERE bc.bookmark_id = ? ORDER BY c.name
-    `).all(id);
+    `, id);
     res.json(collections);
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.post("/collections/:collectionId/bookmarks", (req, res) => {
+router.post("/collections/:collectionId/bookmarks", async (req, res) => {
   try {
     const { collectionId } = req.params;
     const { bookmarkIds, replace } = req.body;
     if (!Array.isArray(bookmarkIds)) return badRequest(res, "bookmarkIds array is required");
-    if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
-    const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-    const restore = db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1");
-    const clearCollections = db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?");
-    db.transaction(() => {
+    if (!(await validateCollectionIds([collectionId]))) return notFound(res, "Collection not found");
+    const db = await getDb();
+    await db.run("BEGIN TRANSACTION");
+    try {
       for (const bmId of bookmarkIds) {
         if (replace) {
-          clearCollections.run(bmId);
+          await db.run("DELETE FROM bookmark_collections WHERE bookmark_id = ?", bmId);
         }
-        insert.run(bmId, collectionId);
-        restore.run(bmId);
+        await db.run(
+          "INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)",
+          bmId,
+          collectionId
+        );
+        await db.run(
+          "UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1",
+          bmId
+        );
       }
-    })();
+      await db.run("COMMIT");
+    } catch (e) {
+      await db.run("ROLLBACK").catch(() => {});
+      throw e;
+    }
     sendJson(res, { success: true, count: bookmarkIds.length });
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.post("/bookmarks/:id/collections/:collectionId", (req, res) => {
+router.post("/bookmarks/:id/collections/:collectionId", async (req, res) => {
   try {
     const { id, collectionId } = req.params;
-    if (!validateCollectionIds([collectionId])) return notFound(res, "Collection not found");
-    db.transaction(() => {
-      db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, collectionId);
-      db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1").run(id);
-    })();
+    if (!(await validateCollectionIds([collectionId]))) return notFound(res, "Collection not found");
+    const db = await getDb();
+    await db.run("BEGIN TRANSACTION");
+    try {
+      await db.run(
+        "INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)",
+        id,
+        collectionId
+      );
+      await db.run(
+        "UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1",
+        id
+      );
+      await db.run("COMMIT");
+    } catch (e) {
+      await db.run("ROLLBACK").catch(() => {});
+      throw e;
+    }
     sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.post("/bookmarks/:id/collections", (req, res) => {
+router.post("/bookmarks/:id/collections", async (req, res) => {
   try {
     const { id } = req.params;
     const { collectionIds } = req.body;
     if (!Array.isArray(collectionIds)) return badRequest(res, "collectionIds array is required");
-    if (collectionIds.length > 0 && !validateCollectionIds(collectionIds)) {
+    if (collectionIds.length > 0 && !(await validateCollectionIds(collectionIds))) {
       return badRequest(res, "One or more collections not found");
     }
-    db.transaction(() => {
-      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ?").run(id);
-      const insert = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
-      for (const colId of collectionIds) insert.run(id, colId);
-      db.prepare("UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1").run(id);
-    })();
-    const collections = db.prepare(`
+    const db = await getDb();
+    await db.run("BEGIN TRANSACTION");
+    try {
+      await db.run("DELETE FROM bookmark_collections WHERE bookmark_id = ?", id);
+      for (const colId of collectionIds) {
+        await db.run(
+          "INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)",
+          id,
+          colId
+        );
+      }
+      await db.run(
+        "UPDATE bookmarks SET is_deleted = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND is_deleted = 1",
+        id
+      );
+      await db.run("COMMIT");
+    } catch (e) {
+      await db.run("ROLLBACK").catch(() => {});
+      throw e;
+    }
+    const collections = await db.all(`
       SELECT c.* FROM collections c
       JOIN bookmark_collections bc ON c.id = bc.collection_id
       WHERE bc.bookmark_id = ?
-    `).all(id);
+    `, id);
     sendJson(res, { success: true, collections });
   } catch (error: any) {
     internalError(res, error);
   }
 });
 
-router.delete("/bookmarks/:id/collections/:collectionId", (req, res) => {
+router.delete("/bookmarks/:id/collections/:collectionId", async (req, res) => {
   try {
     const { id, collectionId } = req.params;
-    db.transaction(() => {
-      db.prepare("DELETE FROM bookmark_collections WHERE bookmark_id = ? AND collection_id = ?").run(id, collectionId);
-      // If bookmark has no remaining collections, move it to inbox-collection
-      const hasCollections = db.prepare("SELECT 1 FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1").get(id) as any;
+    const db = await getDb();
+    await db.run("BEGIN TRANSACTION");
+    try {
+      await db.run(
+        "DELETE FROM bookmark_collections WHERE bookmark_id = ? AND collection_id = ?",
+        id,
+        collectionId
+      );
+      const hasCollections = await db.get(
+        "SELECT 1 FROM bookmark_collections WHERE bookmark_id = ? LIMIT 1",
+        id
+      );
       if (!hasCollections) {
-        db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)").run(id, 'inbox-collection');
+        await db.run(
+          "INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)",
+          id,
+          "inbox-collection"
+        );
       }
-    })();
+      await db.run("COMMIT");
+    } catch (e) {
+      await db.run("ROLLBACK").catch(() => {});
+      throw e;
+    }
     sendJson(res, { success: true });
   } catch (error: any) {
     internalError(res, error);

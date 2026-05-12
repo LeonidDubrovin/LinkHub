@@ -1,5 +1,5 @@
 import express from "express";
-import db from "../db.ts";
+import { getDb } from "../db.ts";
 
 export interface ApiResponse<T = any> {
   success?: boolean;
@@ -33,35 +33,37 @@ export function internalError(res: express.Response, error: any) {
   sendError(res, error.message || "Internal server error", 500);
 }
 
-export function getBookmarkWithRelations(id: string) {
-  const bookmark = db.prepare(`
+export async function getBookmarkWithRelations(id: string) {
+  const db = await getDb();
+  const bookmark = (await db.get(`
     SELECT b.* 
     FROM bookmarks b 
     WHERE b.id = ?
-  `).get(id) as any;
+  `, id)) as any;
 
   if (!bookmark) return null;
 
-  const tags = db.prepare(`
+  const tags = await db.all(`
     SELECT t.* FROM tags t 
     JOIN bookmark_tags bt ON t.id = bt.tag_id 
     WHERE bt.bookmark_id = ?
-  `).all(id);
+  `, id);
 
-  const collections = db.prepare(`
+  const collections = await db.all(`
     SELECT c.* FROM collections c 
     JOIN bookmark_collections bc ON c.id = bc.collection_id 
     WHERE bc.bookmark_id = ? ORDER BY c.name
-  `).all(id);
+  `, id);
 
   return { ...bookmark, tags, collections };
 }
 
-export function getBookmarksWithRelations(
+export async function getBookmarksWithRelations(
   query: string, 
   params: any[] = []
-): any[] {
-  const bookmarks = db.prepare(query).all(...params) as any[];
+): Promise<any[]> {
+  const db = await getDb();
+  const bookmarks = (await db.all(query, ...params)) as any[];
   if (bookmarks.length === 0) return [];
 
   const bookmarkIds = bookmarks.map(b => b.id);
@@ -72,16 +74,16 @@ export function getBookmarksWithRelations(
   for (let i = 0; i < bookmarkIds.length; i += chunkSize) {
     const chunk = bookmarkIds.slice(i, i + chunkSize);
     const placeholders = chunk.map(() => '?').join(',');
-    allTags.push(...db.prepare(`
+    allTags.push(...(await db.all(`
       SELECT bt.bookmark_id, t.* FROM tags t 
       JOIN bookmark_tags bt ON t.id = bt.tag_id 
       WHERE bt.bookmark_id IN (${placeholders})
-    `).all(...chunk) as any[]);
-    allCollections.push(...db.prepare(`
+    `, ...chunk)) as any[]);
+    allCollections.push(...(await db.all(`
       SELECT bc.bookmark_id, c.* FROM bookmark_collections bc 
       JOIN collections c ON bc.collection_id = c.id 
       WHERE bc.bookmark_id IN (${placeholders})
-    `).all(...chunk) as any[]);
+    `, ...chunk)) as any[]);
   }
 
   const tagsByBookmarkId = allTags.reduce((acc, tag) => {
@@ -105,19 +107,22 @@ export function getBookmarksWithRelations(
   }));
 }
 
-export function softDeleteBookmark(id: string) {
-  db.prepare("UPDATE bookmarks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(id);
+export async function softDeleteBookmark(id: string) {
+  const db = await getDb();
+  await db.run("UPDATE bookmarks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", id);
 }
 
-export function bulkSoftDeleteBookmarks(ids: string[]) {
+export async function bulkSoftDeleteBookmarks(ids: string[]) {
+  const db = await getDb();
   const placeholders = ids.map(() => '?').join(',');
-  db.prepare(`UPDATE bookmarks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`).run(...ids);
+  await db.run(`UPDATE bookmarks SET is_deleted = 1, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`, ...ids);
 }
 
-export function validateCollectionIds(collectionIds: string[]): boolean {
+export async function validateCollectionIds(collectionIds: string[]): Promise<boolean> {
   if (collectionIds.length === 0) return true;
+  const db = await getDb();
   const placeholders = collectionIds.map(() => '?').join(',');
-  const existingCollections = db.prepare(`SELECT id FROM collections WHERE id IN (${placeholders})`).all(...collectionIds) as any[];
+  const existingCollections = (await db.all(`SELECT id FROM collections WHERE id IN (${placeholders})`, ...collectionIds)) as any[];
   return existingCollections.length === collectionIds.length;
 }
 

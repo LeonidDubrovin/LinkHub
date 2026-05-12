@@ -1,6 +1,6 @@
 import express from "express";
 import { getFaviconPath, downloadAndCacheFavicon } from "../services/scraper.js";
-import db from "../db.js";
+import { getDb } from "../db.js";
 import fs from "fs";
 
 import spacesRoutes from "./spaces.js";
@@ -21,14 +21,15 @@ router.use(backupRoutes);
 
 router.get("/tags", async (req, res) => {
   try {
-    const tags = db.prepare(`
+    const db = await getDb();
+    const tags = await db.all(`
       SELECT t.*, COUNT(bt.bookmark_id) as bookmarkCount
       FROM tags t
       LEFT JOIN bookmark_tags bt ON t.id = bt.tag_id
       LEFT JOIN bookmarks b ON bt.bookmark_id = b.id AND b.is_deleted = 0
       GROUP BY t.id
       ORDER BY bookmarkCount DESC, t.name
-    `).all();
+    `);
     res.json(tags);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -36,7 +37,6 @@ router.get("/tags", async (req, res) => {
 });
 
 function sanitizeDomain(domain: string): string {
-  // Allow only valid domain characters; strip anything else to prevent path traversal
   return domain.replace(/[^a-zA-Z0-9._-]/g, "");
 }
 

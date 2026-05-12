@@ -1,5 +1,5 @@
 import express from "express";
-import db, { getDataDir } from "../db.ts";
+import { getDb, getDataDir } from "../db.ts";
 import { getConfig, saveConfig } from "../config.ts";
 import { CategorizationService } from "../services/categorizer.ts";
 import fs from "fs";
@@ -102,7 +102,8 @@ router.post("/bookmarks/:id/categorize", async (req, res) => {
     const { force } = req.body;
     const result = await categorizer.categorizeBookmark(id, force ?? false);
     if (result.success) {
-      const bookmark = db.prepare("SELECT * FROM bookmarks WHERE id = ?").get(id) as any;
+      const db = await getDb();
+      const bookmark = (await db.get("SELECT * FROM bookmarks WHERE id = ?", id)) as any;
       sendJson(res, { success: true, bookmark });
     } else {
       badRequest(res, result.error);

@@ -1,4 +1,4 @@
-import db from "../../db.ts";
+import { getDb } from "../../db.ts";
 import { getConfig } from "../../config.ts";
 import { BookmarkData, CategorizationResult, ICategorizationStrategy, LLMConfig } from "./interfaces.ts";
 
@@ -14,11 +14,11 @@ export class OpenRouterStrategy implements ICategorizationStrategy {
   }
 
    async categorize(data: BookmarkData): Promise<CategorizationResult> {
-     // Fetch existing collection names from DB
-     const collections = db.prepare("SELECT id, name FROM collections").all() as { id: string; name: string }[];
-     const collectionNames = collections.map(c => c.name);
+      const db = await getDb();
+      const collections = (await db.all("SELECT id, name FROM collections")) as { id: string; name: string }[];
+      const collectionNames = collections.map(c => c.name);
 
-     const prompt = `
+      const prompt = `
 You are a bookmark categorization assistant. Analyze the web page and assign it to appropriate collections and tags.
 
 Existing collections: ${JSON.stringify(collectionNames)}
@@ -40,64 +40,63 @@ Return strictly valid JSON:
 }
 `;
 
-     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-       method: "POST",
-       headers: {
-         "Authorization": `Bearer ${this.config.apiKey}`,
-         "Content-Type": "application/json",
-         "HTTP-Referer": "https://linkhub.app",
-         "X-Title": "LinkHub"
-       },
-       body: JSON.stringify({
-         model: this.config.model,
-         messages: [
-           { role: "system", content: "You are a helpful assistant that categorizes bookmarks into collections." },
-           { role: "user", content: prompt }
-         ],
-         response_format: { type: "json_object" },
-         temperature: 0.3,
-         max_tokens: 512
-       })
-     });
-
-     if (!response.ok) {
-       const errorText = await response.text();
-       throw new Error(`OpenRouter API error ${response.status}: ${errorText}`);
-     }
-
-     const result = await response.json();
-     const content = result.choices?.[0]?.message?.content;
-     if (!content) {
-       throw new Error("Empty response from OpenRouter");
-     }
-
-     let json: any;
-     try {
-       json = JSON.parse(content);
-     } catch (e) {
-       throw new Error("Invalid JSON response from LLM");
-     }
-
-     // Validate and normalize
-     const tags = Array.isArray(json.tags) ? json.tags.map((t: string) => t.toLowerCase().trim()) : [];
-     const collectionNamesResp = Array.isArray(json.collectionNames) ? json.collectionNames.map((c: string) => String(c).trim()) : [];
-
-     return {
-       collectionNames: collectionNamesResp,
-       tags
-     };
-   }
-
-  async testConnection(): Promise<boolean> {
-    try {
-      const response = await fetch("https://openrouter.ai/api/v1/models", {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
         headers: {
-          "Authorization": `Bearer ${this.config.apiKey}`
-        }
+          "Authorization": `Bearer ${this.config.apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://linkhub.app",
+          "X-Title": "LinkHub"
+        },
+        body: JSON.stringify({
+          model: this.config.model,
+          messages: [
+            { role: "system", content: "You are a helpful assistant that categorizes bookmarks into collections." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.3,
+          max_tokens: 512
+        })
       });
-      return response.ok;
-    } catch (e) {
-      return false;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API error ${response.status}: ${errorText}`);
+      }
+
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("Empty response from OpenRouter");
+      }
+
+      let json: any;
+      try {
+        json = JSON.parse(content);
+      } catch (e) {
+        throw new Error("Invalid JSON response from LLM");
+      }
+
+      const tags = Array.isArray(json.tags) ? json.tags.map((t: string) => t.toLowerCase().trim()) : [];
+      const collectionNamesResp = Array.isArray(json.collectionNames) ? json.collectionNames.map((c: string) => String(c).trim()) : [];
+
+      return {
+        collectionNames: collectionNamesResp,
+        tags
+      };
     }
-  }
+
+   async testConnection(): Promise<boolean> {
+     try {
+       const response = await fetch("https://openrouter.ai/api/v1/models", {
+         headers: {
+           "Authorization": `Bearer ${this.config.apiKey}`
+         }
+       });
+       return response.ok;
+     } catch (e) {
+       return false;
+     }
+   }
 }
