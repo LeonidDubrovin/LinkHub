@@ -15,28 +15,26 @@ async function createWindow() {
   }
 
   const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
-  const configPath = path.join(exeDir, "linkhub.config.json");
-  let customDataDir = null;
 
-  if (fs.existsSync(configPath)) {
+  // Determine data directory: use custom path from legacy config if available,
+  // otherwise default to <exeDir>/data in production or <cwd>/data in dev.
+  let dataDir = path.join(exeDir, "data");
+  const legacyConfigPath = path.join(exeDir, "linkhub.config.json");
+  if (fs.existsSync(legacyConfigPath)) {
     try {
-      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-      if (config.dataDir) {
-        customDataDir = config.dataDir;
+      const legacyConfig = JSON.parse(fs.readFileSync(legacyConfigPath, "utf-8"));
+      if (legacyConfig.dataDir) {
+        dataDir = legacyConfig.dataDir;
       }
     } catch (e) {
-      console.error("Failed to read config:", e);
+      console.error("Failed to read legacy config:", e);
     }
   }
 
   if (!process.env.DATA_DIR) {
-    if (customDataDir) {
-      process.env.DATA_DIR = customDataDir;
-    } else if (app.isPackaged) {
-      // In production, store data next to the executable (portable mode)
-      process.env.DATA_DIR = path.join(exeDir, "data");
+    if (app.isPackaged) {
+      process.env.DATA_DIR = dataDir;
     } else {
-      // In development, store in the project root
       process.env.DATA_DIR = path.join(process.cwd(), "data");
     }
   }

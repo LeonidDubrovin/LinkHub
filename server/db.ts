@@ -1,21 +1,23 @@
 import Database from "better-sqlite3";
-import os from "os";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import * as tldts from "tldts";
+import { getBaseDataDir } from "./paths.ts";
 import { getConfig } from "./config.ts";
 
 const appName = "LinkHub";
 
-let dataDir = process.env.DATA_DIR;
-if (!dataDir) {
+const baseDir = getBaseDataDir();
+let dataDir = baseDir;
+
+try {
   const config = getConfig();
   if (config.dataDir) {
     dataDir = config.dataDir;
-  } else {
-    dataDir = path.join(process.cwd(), "data");
   }
+} catch (e) {
+  console.error("Failed to read config for dataDir:", e);
 }
 
 if (!fs.existsSync(dataDir)) {

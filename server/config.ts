@@ -1,7 +1,12 @@
 import fs from "fs";
 import path from "path";
+import { getBaseDataDir } from "./paths.ts";
 
 export function getConfigPath() {
+  return path.join(getBaseDataDir(), "config.json");
+}
+
+function getLegacyConfigPath() {
   const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
   return path.join(exeDir, "linkhub.config.json");
 }
@@ -16,6 +21,17 @@ export function getConfig() {
       config = JSON.parse(data);
     } catch (e) {
       console.error("Failed to read config:", e);
+    }
+  } else {
+    // Backward compatibility: check legacy location next to executable
+    const legacyPath = getLegacyConfigPath();
+    if (fs.existsSync(legacyPath)) {
+      try {
+        const data = fs.readFileSync(legacyPath, "utf-8");
+        config = JSON.parse(data);
+      } catch (e) {
+        console.error("Failed to read legacy config:", e);
+      }
     }
   }
 
@@ -84,7 +100,11 @@ export function getConfig() {
 
 export function saveConfig(config: any) {
   const configPath = getConfigPath();
+  const configDir = path.dirname(configPath);
   try {
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+    }
     fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
   } catch (e) {
     console.error("Failed to save config:", e);
