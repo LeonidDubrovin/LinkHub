@@ -6,7 +6,6 @@ type ToastFn = (toast: { message: string; type: "success" | "error" | "info" } |
 type InvalidateFn = () => void;
 
 export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: InvalidateFn) {
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [selectedBookmark, setSelectedBookmark] = useState<Bookmark | null>(null);
   const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set());
   const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
@@ -20,18 +19,6 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
     onConfirm?: () => void;
     actions?: { label: string; variant?: 'primary' | 'danger' | 'secondary'; onClick: () => void }[];
   }>({ isOpen: false, title: "", message: "" });
-
-  const fetchBookmarks = useCallback(
-    async (collectionId: string | null, tagId: string | null, domain: string | null) => {
-      const data = await apiClient.bookmarks.list({
-        collectionId: collectionId || undefined,
-        tagId: tagId || undefined,
-        domain: domain || undefined,
-      });
-      setBookmarks(Array.isArray(data) ? data : []);
-    },
-    []
-  );
 
   const handleRefreshBookmark = useCallback(
     async (id: string, skipFetch = false, fetchBookmarksFn?: () => Promise<void>, fetchAllFn?: () => Promise<void>) => {
@@ -534,8 +521,6 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
   }, []);
 
   return {
-    bookmarks,
-    setBookmarks,
     selectedBookmark,
     setSelectedBookmark,
     selectedBookmarkIds,
@@ -548,7 +533,6 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
     confirmDialog,
     setConfirmDialog,
 
-    fetchBookmarks,
     handleRefreshBookmark,
     handleAddBookmark,
     handleDeleteBookmark,

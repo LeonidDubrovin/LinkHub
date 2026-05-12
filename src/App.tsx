@@ -361,12 +361,15 @@ export default function App() {
     });
   }, []);
 
+  const { setSelectedBookmark: setBmSelectedBookmark } = bm;
+  const { setReaderContent: setInspReaderContent, setInspectorTab: setInspInspectorTab, setIsInspectorOpen: setInspIsInspectorOpen } = insp;
+
   const onSelectBookmark = useCallback((bookmark: Bookmark) => {
-    bm.setSelectedBookmark(bookmark);
-    insp.setReaderContent(null);
-    insp.setInspectorTab("details");
-    insp.setIsInspectorOpen(true);
-  }, [bm, insp]);
+    setBmSelectedBookmark(bookmark);
+    setInspReaderContent(null);
+    setInspInspectorTab("details");
+    setInspIsInspectorOpen(true);
+  }, [setBmSelectedBookmark, setInspReaderContent, setInspInspectorTab, setInspIsInspectorOpen]);
 
   return (
     <>

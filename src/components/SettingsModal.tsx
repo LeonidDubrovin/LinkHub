@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { X, Download, Upload, Folder, Globe, Database, Settings, Sparkles, TestTube } from "lucide-react";
 
 interface SettingsModalProps {
@@ -32,6 +32,7 @@ export function SettingsModal({
   onRestore,
   setToast,
 }: SettingsModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<Tab>("general");
   const [dataDir, setDataDir] = useState("");
   const [userAgent, setUserAgent] = useState("");
@@ -58,8 +59,10 @@ export function SettingsModal({
   const [isTesting, setIsTesting] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      fetch("/api/settings")
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    fetch("/api/settings")
         .then((res) => res.json())
         .then((data) => {
           if (data.dataDir !== undefined) setDataDir(data.dataDir);
@@ -68,8 +71,8 @@ export function SettingsModal({
           if (data.localHeuristics) setLocalHeuristics(data.localHeuristics);
         })
         .catch(console.error);
-    }
-  }, [isOpen]);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
 
   const handleSaveSettings = async () => {
     try {
@@ -158,8 +161,11 @@ export function SettingsModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col h-[550px]">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div ref={modalRef} className="bg-white rounded-xl shadow-xl w-full max-w-3xl overflow-hidden flex flex-col h-[550px]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
           <h2 className="text-lg font-semibold text-slate-800">Settings</h2>
           <button

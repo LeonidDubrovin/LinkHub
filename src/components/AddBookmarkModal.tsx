@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X } from 'lucide-react';
 import { Icon } from './Icon';
 import { Collection } from '../types';
@@ -21,8 +21,16 @@ export function AddBookmarkModal({
   collections = [],
   defaultCollectionIds = [] 
 }: AddBookmarkModalProps) {
+  const modalRef = useRef<HTMLDivElement>(null);
   const [newUrls, setNewUrls] = useState("");
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<string[]>(defaultCollectionIds);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
 
   const treeCollections = useMemo(() => buildCollectionTree(collections), [collections]);
 
@@ -83,8 +91,11 @@ export function AddBookmarkModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+    <div
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div ref={modalRef} className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-semibold text-lg">Add New Bookmark</h3>
           <button

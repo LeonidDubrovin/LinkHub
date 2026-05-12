@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 
 interface RenameCollectionModalProps {
@@ -16,16 +16,25 @@ export function RenameCollectionModal({ currentName, onSubmit, onClose }: Rename
     inputRef.current?.select();
   }, []);
 
-  const handleKey = (e: React.KeyboardEvent) => {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  const handleKey = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && name.trim()) {
       onSubmit(name.trim());
     } else if (e.key === 'Escape') {
       onClose();
     }
-  };
+  }, [name, onSubmit, onClose]);
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div
+      className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-semibold text-sm">Rename Collection</h3>
