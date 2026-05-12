@@ -1,0 +1,4 @@
+
+Server running on http://127.0.0.1:15678
+Loading app from: http://127.0.0.1:15678
+Using database at: E:\dev\LinkHub\release\win-unpacked\data\bookmarks.db

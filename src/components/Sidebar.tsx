@@ -87,8 +87,8 @@ function CollectionTreeInner(props: {
       dndManager={dndManager}
       width={props.sidebarWidth - 48}
       height={props.treeHeight}
-      indent={12}
-      rowHeight={32}
+      indent={16}
+      rowHeight={28}
       openByDefault={true}
       className="!overflow-visible"
     >

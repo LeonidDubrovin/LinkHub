@@ -72,7 +72,7 @@ export const ArboristNode = React.memo(function ArboristNode({
     return (
       <div
         style={groupStyle}
-        className="flex items-center gap-2 py-1.5 pr-3 text-sm mt-2 mb-1 select-none font-semibold text-slate-700 cursor-pointer hover:text-slate-900"
+        className="flex items-center gap-1.5 py-1 pr-3 text-sm mt-1 select-none font-semibold text-slate-600 cursor-pointer hover:text-slate-800"
         onClick={() => node.toggle()}
         onContextMenu={(e) => onSpaceContextMenu(e, space)}
       >
@@ -95,12 +95,6 @@ export const ArboristNode = React.memo(function ArboristNode({
   const isSelected = node.isSelected;
   const isDragging = node.isDragging;
   const willReceiveDrop = node.willReceiveDrop;
-  const isCustomIcon = !!data.icon && data.icon !== "Folder";
-  const iconColor = isCustomIcon
-    ? data.color
-    : isSelected
-      ? "#94a3b8"
-      : "#cbd5e1";
 
   const collection: Collection = {
     id: data.id,
@@ -121,13 +115,13 @@ export const ArboristNode = React.memo(function ArboristNode({
       ref={dragHandle}
       style={nodeStyle}
       className={cn(
-        "flex items-center gap-2 py-1.5 pr-3 rounded-md text-sm mb-px select-none cursor-pointer",
+        "group flex items-center gap-1.5 py-[5px] pr-2 rounded-md text-sm select-none cursor-pointer transition-colors",
         isDragging && "opacity-40",
-        isBookmarkOver && "bg-blue-50 ring-2 ring-green-400 ring-offset-[-1px]",
+        isBookmarkOver && "bg-blue-50 ring-1 ring-green-400",
         !isBookmarkOver && isSelected
-          ? "bg-blue-100 text-blue-700 font-medium"
+          ? "bg-blue-600 text-white"
           : !isBookmarkOver && willReceiveDrop
-            ? "bg-blue-50 ring-2 ring-blue-400 ring-offset-[-1px]"
+            ? "bg-blue-50 ring-1 ring-blue-400"
             : !isBookmarkOver && "hover:bg-slate-100 text-slate-700"
       )}
       onClick={() => onSelectCollection(data.id)}
@@ -142,7 +136,10 @@ export const ArboristNode = React.memo(function ArboristNode({
             e.stopPropagation();
             node.toggle();
           }}
-          className="w-4 h-4 flex-shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600"
+          className={cn(
+            "w-4 h-4 flex-shrink-0 flex items-center justify-center transition-colors",
+            isSelected ? "text-blue-200 hover:text-white" : "text-slate-400 hover:text-slate-600"
+          )}
         >
           <ChevronRight
             size={14}
@@ -155,10 +152,19 @@ export const ArboristNode = React.memo(function ArboristNode({
       ) : (
         <span className="w-4 h-4 flex-shrink-0" />
       )}
-      <Icon name={data.icon} size={16} color={iconColor} />
-      <span className="truncate flex-1">{data.name}</span>
-      {!data.isGroup && (
-        <span className="text-xs text-slate-400">{data.bookmarkCount}</span>
+      <span className="flex-shrink-0 flex items-center justify-center">
+        <Icon name={data.icon || 'lucide:Folder'} size={18} color={isSelected ? 'white' : undefined} />
+      </span>
+      <span className="truncate flex-1 min-w-0">{data.name}</span>
+      {!data.isGroup && data.bookmarkCount > 0 && (
+        <span className={cn(
+          "text-[11px] tabular-nums leading-none px-1 py-0.5 rounded",
+          isSelected
+            ? "bg-blue-500/50 text-white"
+            : "bg-slate-100 text-slate-500 group-hover:bg-slate-200"
+        )}>
+          {data.bookmarkCount}
+        </span>
       )}
     </div>
   );
