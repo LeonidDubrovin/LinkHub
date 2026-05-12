@@ -38,6 +38,7 @@ interface SidebarProps {
   onDropBookmarks: (collectionId: string, bookmarkIds: string[], sourceCollectionId?: string | null, isFromTrash?: boolean) => void;
   setIsSettingsOpen: (v: boolean) => void;
   setIsAdding: (v: boolean) => void;
+  isBackgroundRefreshing?: boolean;
 }
 
 function countVisibleNodes(nodes: ArboristNodeData[]): number {
@@ -137,6 +138,7 @@ export function Sidebar({
   onDropBookmarks,
   setIsSettingsOpen,
   setIsAdding,
+  isBackgroundRefreshing,
 }: SidebarProps) {
   const nothingSelected = !selectedCollectionId && !selectedDomain && !isViewingTrash;
   const treeRef = useRef<TreeApi<ArboristNodeData> | undefined>(undefined);
@@ -213,13 +215,19 @@ export function Sidebar({
         </button>
       </div>
 
-      <div className="px-3 pb-2 flex-shrink-0">
+      <div className="px-3 pb-2 flex-shrink-0 space-y-1">
         <button
           onClick={() => setIsAdding(true)}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-2 px-3 flex items-center justify-center gap-2 text-sm font-medium transition-colors"
         >
           <Plus size={16} /> Add Bookmark
         </button>
+        {isBackgroundRefreshing && (
+          <div className="flex items-center justify-center gap-1.5 text-xs text-slate-500 py-1">
+            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+            <span>Fetching metadata…</span>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarGutter: 'stable' }}>

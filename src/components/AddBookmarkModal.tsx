@@ -6,7 +6,7 @@ import { buildCollectionTree } from '../utils/buildCollectionTree';
 
 interface AddBookmarkModalProps {
   isOpen: boolean;
-  isLoading: boolean;
+  isSaving: boolean;
   onClose: () => void;
   onSubmit: (urls: string, collectionIds?: string[]) => void;
   collections?: Collection[];
@@ -15,7 +15,7 @@ interface AddBookmarkModalProps {
 
 export function AddBookmarkModal({ 
   isOpen, 
-  isLoading, 
+  isSaving, 
   onClose, 
   onSubmit, 
   collections = [],
@@ -150,13 +150,13 @@ export function AddBookmarkModal({
             </button>
             <button
               type="submit"
-              disabled={isLoading || !newUrls}
+              disabled={isSaving || !newUrls}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
             >
-              {isLoading ? (
+              {isSaving ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>{" "}
-                  Analyzing...
+                  Saving...
                 </>
               ) : (
                 "Save Bookmark"

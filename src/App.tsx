@@ -411,6 +411,7 @@ export default function App() {
 
           setIsSettingsOpen={setIsSettingsOpen}
           setIsAdding={bm.setIsAdding}
+          isBackgroundRefreshing={bm.isBackgroundRefreshing}
         />
 
         <BookmarkList
@@ -498,7 +499,7 @@ export default function App() {
 
       <AddBookmarkModal
         isOpen={bm.isAdding}
-        isLoading={bm.isAddingLoading}
+        isSaving={bm.isAddingSaving}
         onClose={() => bm.setIsAdding(false)}
         onSubmit={handleAddBookmark}
         collections={api.collections}

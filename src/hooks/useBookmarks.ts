@@ -10,7 +10,8 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
   const [selectedBookmarkIds, setSelectedBookmarkIds] = useState<Set<string>>(new Set());
   const [refreshingBookmarkIds, setRefreshingBookmarkIds] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
-  const [isAddingLoading, setIsAddingLoading] = useState(false);
+  const [isAddingSaving, setIsAddingSaving] = useState(false);
+  const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [bulkAddResult, setBulkAddResult] = useState<{ urls: string[]; results: import("../services/api").CreateBookmarkResult[] } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -60,7 +61,8 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
         .filter((u) => u);
       if (urls.length === 0) return;
 
-      setIsAddingLoading(true);
+      setIsAddingSaving(true);
+      setIsBackgroundRefreshing(false);
       try {
         const response = await apiClient.bookmarks.bulkCreate(urls, collectionIds);
         const results = response.results;
@@ -76,11 +78,13 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
         setToast({ message, type: anySuccess ? "success" : "info" });
         setBulkAddResult({ urls, results });
         setIsAdding(false);
+        setIsAddingSaving(false);
 
         if (anySuccess) {
           await fetchBookmarksFn?.();
           await fetchAllFn?.();
           invalidateBookmarks?.();
+          setIsBackgroundRefreshing(true);
           const refreshPromises = [...added, ...restored]
             .filter((r) => r.needsRefresh)
             .map((r) => refreshFn?.(r.id!, true));
@@ -88,11 +92,13 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
           await fetchBookmarksFn?.();
           await fetchAllFn?.();
           invalidateBookmarks?.();
+          setIsBackgroundRefreshing(false);
         }
       } catch {
         setToast({ message: "An unexpected error occurred", type: "error" });
       } finally {
-        setIsAddingLoading(false);
+        setIsAddingSaving(false);
+        setIsBackgroundRefreshing(false);
       }
     },
     [setToast, invalidateBookmarks]
@@ -531,7 +537,8 @@ export function useBookmarks(setToast: ToastFn, invalidateBookmarks?: Invalidate
     refreshingBookmarkIds,
     isAdding,
     setIsAdding,
-    isAddingLoading,
+    isAddingSaving,
+    isBackgroundRefreshing,
     isCategorizing,
     bulkAddResult,
     setBulkAddResult,
