@@ -5,8 +5,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const _dirname = typeof __dirname !== "undefined" ? __dirname : path.dirname(fileURLToPath(import.meta.url));
 
 export const app = express();
 const PORT = 8400;
@@ -32,7 +31,7 @@ export async function startServer(isElectron = false): Promise<number> {
     app.use("*", async (req, res, next) => {
       try {
         const url = req.originalUrl;
-        let template = await import("fs/promises").then(fs => fs.readFile(path.resolve(__dirname, "index.html"), "utf-8"));
+        let template = await import("fs/promises").then(fs => fs.readFile(path.resolve(_dirname, "index.html"), "utf-8"));
         template = await vite.transformIndexHtml(url, template);
         res.status(200).set({ "Content-Type": "text/html" }).end(template);
       } catch (e: any) {
@@ -43,9 +42,9 @@ export async function startServer(isElectron = false): Promise<number> {
   } else {
     // In production or Electron, serve static files from dist
     // Resolve dist path depending on whether we are running bundled in dist-electron or directly
-    const distPath = __dirname.endsWith("dist-electron")
-      ? path.join(__dirname, "../dist")
-      : path.join(__dirname, "dist");
+    const distPath = _dirname.endsWith("dist-electron")
+      ? path.join(_dirname, "../dist")
+      : path.join(_dirname, "dist");
 
     app.use(express.static(distPath));
 

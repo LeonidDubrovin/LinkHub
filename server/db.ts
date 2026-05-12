@@ -189,8 +189,17 @@ try {
           );
         }
 
-        // 4. Migrate bookmarks to bookmark_collections
-        const bookmarks = db.prepare("SELECT id, category_id FROM bookmarks WHERE is_deleted = 0").all() as any[];
+        // 4. Migrate bookmarks to bookmark_collections (skip if category_id column missing - fresh DB)
+        let bookmarks: any[] = [];
+        try {
+          bookmarks = db.prepare("SELECT id, category_id FROM bookmarks WHERE is_deleted = 0").all() as any[];
+        } catch (e: any) {
+          if (e.message?.includes("no such column: category_id")) {
+            console.log("category_id column not found — skipping legacy bookmark migration (fresh database)");
+          } else {
+            throw e;
+          }
+        }
         const insertLink = db.prepare("INSERT OR IGNORE INTO bookmark_collections (bookmark_id, collection_id) VALUES (?, ?)");
         for (const b of bookmarks) {
           if (b.category_id) {

@@ -17,7 +17,7 @@ export default defineConfig([
     target: "node18",
     outDir: "dist-electron",
     clean: true,
-    external: ["better-sqlite3", "express", "vite"],
+    external: ["better-sqlite3", "express", "jsdom", "vite"],
     dts: false,
   },
 ]);
